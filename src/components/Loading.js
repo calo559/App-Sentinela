@@ -1,17 +1,14 @@
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import colors from '../theme/colors';
+import { View, ActivityIndicator, Text } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 import typography from '../theme/typography';
 
 export default function Loading({ message = 'Cargando...' }) {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
       <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.text}>{message}</Text>
+      <Text style={{ ...typography.body, color: colors.textSecondary, marginTop: 12 }}>{message}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  text: { ...typography.body, color: colors.textSecondary, marginTop: 12 },
-});

@@ -1,9 +1,8 @@
 // SettingsScreen.jsx
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   Switch,
   ScrollView,
   TouchableOpacity,
@@ -13,14 +12,13 @@ import {
   Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import colors from "../theme/colors";
+import { useTheme } from "../context/ThemeContext";
 import typography from "../theme/typography";
 
 export default function SettingsScreen({ navigation }) {
-  // Estados de configuración
+  const { colors, isDarkMode, toggleDarkMode } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [sound, setSound] = useState(true);
-  const [nightMode, setNightMode] = useState(false);
   const [autoAttendance, setAutoAttendance] = useState(false);
   const [reportReminders, setReportReminders] = useState(true);
   const [language, setLanguage] = useState("es");
@@ -150,8 +148,8 @@ export default function SettingsScreen({ navigation }) {
         {
           label: "Modo nocturno",
           description: "Tema oscuro para reducir fatiga visual",
-          value: nightMode,
-          onToggle: setNightMode,
+          value: isDarkMode,
+          onToggle: toggleDarkMode,
           type: "switch",
         },
         {
@@ -201,68 +199,43 @@ export default function SettingsScreen({ navigation }) {
   ];
 
   return (
-    <LinearGradient colors={[colors.background, "#F0F4F0"]} style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Header Animado */}
-        <Animated.View
-          style={[
-            styles.headerContainer,
-            {
-              transform: [{ scale: headerScale }],
-              opacity: fadeAnim,
-            },
-          ]}
-        >
+    <LinearGradient colors={[colors.background, isDarkMode ? colors.surface : "#F0F4F0"]} style={s.container}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+        <Animated.View style={[s.headerContainer, { transform: [{ scale: headerScale }], opacity: fadeAnim }]}>
           <LinearGradient
             colors={[colors.primary, colors.primaryDark]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={s.headerGradient}
           >
-            <View style={styles.headerIconContainer}>
-              <Text style={styles.headerIcon}>⚙️</Text>
+            <View style={s.headerIconContainer}>
+              <Text style={s.headerIcon}>⚙️</Text>
             </View>
-            <Text style={styles.headerTitle}>Configuración</Text>
-            <Text style={styles.headerSubtitle}>Personaliza tu experiencia en el sistema</Text>
+            <Text style={s.headerTitle}>Configuración</Text>
+            <Text style={s.headerSubtitle}>Personaliza tu experiencia en el sistema</Text>
           </LinearGradient>
         </Animated.View>
 
-        {/* Secciones */}
-        <Animated.View
-          style={{
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          }}
-        >
-          {sections.map((section, sectionIndex) => (
-            <Animated.View
-              key={section.title}
-              style={[
-                styles.sectionContainer,
-                {
-                  transform: [{ scale: cardScale }],
-                },
-              ]}
-            >
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionIcon}>{section.icon}</Text>
-                <Text style={styles.sectionTitle}>{section.title}</Text>
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          {sections.map((section) => (
+            <Animated.View key={section.title} style={[s.sectionContainer, { backgroundColor: colors.surface, transform: [{ scale: cardScale }] }]}>
+              <View style={[s.sectionHeader, { backgroundColor: isDarkMode ? colors.surfaceVariant : "#FAFAFA", borderBottomColor: colors.border }]}>
+                <Text style={s.sectionIcon}>{section.icon}</Text>
+                <Text style={[s.sectionTitle, { color: colors.primary }]}>{section.title}</Text>
               </View>
-
-              <View style={styles.sectionContent}>
+              <View style={s.sectionContent}>
                 {section.items.map((item, itemIndex) => (
                   <TouchableOpacity
                     key={item.label}
-                    style={[styles.settingItem, itemIndex < section.items.length - 1 && styles.settingItemBorder]}
+                    style={[s.settingItem, itemIndex < section.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
                     onPress={item.onPress || item.onToggle}
                     activeOpacity={item.type !== "switch" ? 0.7 : 1}
                     disabled={item.type === "switch"}
                   >
-                    <View style={styles.settingInfo}>
-                      <Text style={styles.settingLabel}>{item.label}</Text>
-                      {item.description && <Text style={styles.settingDescription}>{item.description}</Text>}
+                    <View style={s.settingInfo}>
+                      <Text style={[s.settingLabel, { color: colors.text }]}>{item.label}</Text>
+                      {item.description && <Text style={[s.settingDescription, { color: colors.textSecondary }]}>{item.description}</Text>}
                     </View>
-
                     {item.type === "switch" && (
                       <Switch
                         value={item.value}
@@ -272,19 +245,16 @@ export default function SettingsScreen({ navigation }) {
                         ios_backgroundColor={colors.border}
                       />
                     )}
-
                     {item.type === "button" && (
-                      <View style={styles.buttonValue}>
-                        <Text style={styles.buttonValueText}>{item.value === "es" ? "Español" : "English"}</Text>
-                        <Text style={styles.chevron}>›</Text>
+                      <View style={s.buttonValue}>
+                        <Text style={[s.buttonValueText, { color: colors.textSecondary }]}>{item.value === "es" ? "Español" : "English"}</Text>
+                        <Text style={[s.chevron, { color: colors.textSecondary }]}>›</Text>
                       </View>
                     )}
-
-                    {item.type === "action" && <Text style={styles.chevron}>›</Text>}
-
+                    {item.type === "action" && <Text style={[s.chevron, { color: colors.textSecondary }]}>›</Text>}
                     {item.type === "version" && (
-                      <View style={styles.versionBadge}>
-                        <Text style={styles.versionText}>2.0.0</Text>
+                      <View style={[s.versionBadge, { backgroundColor: colors.primaryLight }]}>
+                        <Text style={[s.versionText, { color: colors.primary }]}>2.0.0</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -293,22 +263,13 @@ export default function SettingsScreen({ navigation }) {
             </Animated.View>
           ))}
 
-          {/* Footer Institucional */}
-          <Animated.View
-            style={[
-              styles.footerContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ scale: cardScale }],
-              },
-            ]}
-          >
-            <View style={styles.footerContent}>
-              <Text style={styles.footerSchool}>Escuela de Educación Secundaria</Text>
-              <Text style={styles.footerSchoolName}>Técnica Nº 3 "S.A. de Padrón"</Text>
-              <View style={styles.footerDivider} />
-              <Text style={styles.footerRights}>© 2024 - Sistema de Asistencia Escolar</Text>
-              <Text style={styles.footerVersion}>Versión 2.0.0 • Build 2401</Text>
+          <Animated.View style={[s.footerContainer, { backgroundColor: colors.surface, opacity: fadeAnim, transform: [{ scale: cardScale }] }]}>
+            <View style={s.footerContent}>
+              <Text style={[s.footerSchool, { color: colors.textSecondary }]}>Escuela de Educación Secundaria</Text>
+              <Text style={[s.footerSchoolName, { color: colors.primary }]}>Técnica Nº 3 "S.A. de Padrón"</Text>
+              <View style={[s.footerDivider, { backgroundColor: colors.primaryLight }]} />
+              <Text style={[s.footerRights, { color: colors.textSecondary }]}>© 2024 - Sistema de Asistencia Escolar</Text>
+              <Text style={[s.footerVersion, { color: colors.textSecondary }]}>Versión 2.0.0 • Build 2401</Text>
             </View>
           </Animated.View>
         </Animated.View>
@@ -317,177 +278,34 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-  },
-  headerContainer: {
-    marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 24,
-    borderRadius: 24,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  headerGradient: {
-    paddingVertical: 28,
-    alignItems: "center",
-  },
-  headerIconContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  headerIcon: {
-    fontSize: 36,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.white,
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.9)",
-    textAlign: "center",
-  },
-  sectionContainer: {
-    marginHorizontal: 16,
-    marginBottom: 20,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: "hidden",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: "#FAFAFA",
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  sectionIcon: {
-    fontSize: 18,
-    marginRight: 10,
-  },
-  sectionTitle: {
-    ...typography.subtitle2,
-    fontWeight: "700",
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
-  sectionContent: {
-    paddingHorizontal: 16,
-  },
-  settingItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 16,
-  },
-  settingItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  settingInfo: {
-    flex: 1,
-    marginRight: 16,
-  },
-  settingLabel: {
-    ...typography.body,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: 4,
-  },
-  settingDescription: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  buttonValue: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  buttonValueText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginRight: 8,
-  },
-  chevron: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    fontWeight: "600",
-  },
-  versionBadge: {
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  versionText: {
-    ...typography.caption,
-    fontWeight: "700",
-    color: colors.primary,
-  },
-  footerContainer: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 20,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  footerContent: {
-    paddingVertical: 24,
-    alignItems: "center",
-  },
-  footerSchool: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  footerSchoolName: {
-    ...typography.body,
-    fontWeight: "600",
-    color: colors.primary,
-    marginBottom: 12,
-  },
-  footerDivider: {
-    width: 50,
-    height: 2,
-    backgroundColor: colors.primaryLight,
-    marginVertical: 12,
-  },
-  footerRights: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  footerVersion: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontSize: 10,
-  },
-});
+const s = {
+  container: { flex: 1 },
+  scrollContent: { paddingBottom: 30 },
+  headerContainer: { marginHorizontal: 16, marginTop: 20, marginBottom: 24, borderRadius: 24, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  headerGradient: { paddingVertical: 28, alignItems: "center" },
+  headerIconContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  headerIcon: { fontSize: 36 },
+  headerTitle: { fontSize: 28, fontWeight: "800", color: "#FFFFFF", marginBottom: 8 },
+  headerSubtitle: { fontSize: 14, color: "rgba(255,255,255,0.9)", textAlign: "center" },
+  sectionContainer: { marginHorizontal: 16, marginBottom: 20, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4, overflow: "hidden" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  sectionIcon: { fontSize: 18, marginRight: 10 },
+  sectionTitle: { ...typography.subtitle2, fontWeight: "700", letterSpacing: 0.5 },
+  sectionContent: { paddingHorizontal: 16 },
+  settingItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
+  settingInfo: { flex: 1, marginRight: 16 },
+  settingLabel: { ...typography.body, fontWeight: "600", marginBottom: 4 },
+  settingDescription: { ...typography.caption },
+  buttonValue: { flexDirection: "row", alignItems: "center" },
+  buttonValueText: { ...typography.body, marginRight: 8 },
+  chevron: { fontSize: 18, fontWeight: "600" },
+  versionBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  versionText: { ...typography.caption, fontWeight: "700" },
+  footerContainer: { marginHorizontal: 16, marginTop: 12, marginBottom: 20, borderRadius: 20, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  footerContent: { paddingVertical: 24, alignItems: "center" },
+  footerSchool: { ...typography.caption, marginBottom: 4 },
+  footerSchoolName: { ...typography.body, fontWeight: "600", marginBottom: 12 },
+  footerDivider: { width: 50, height: 2, marginVertical: 12 },
+  footerRights: { ...typography.caption, marginBottom: 4 },
+  footerVersion: { ...typography.caption, fontSize: 10 },
+};

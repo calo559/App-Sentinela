@@ -4,6 +4,7 @@ export const SCREENS = {
   EVENTS: 'Events',
   PROFILE: 'Profile',
   SETTINGS: 'Settings',
+  QR_SCANNER: 'QrScanner',
 };
 
 export const STORAGE_KEYS = {
