@@ -19,7 +19,7 @@
 
 import QrCore from '../../../qr-entrada/qr-core';
 import { etiquetaCurso } from '../utils/malla';
-import { esDiaClase, cursoEnClaseAhora, proximaClase, MODO_PRUEBA } from './horarios';
+import { esDiaClase, periodoDeCursoAhora, proximaClase, MODO_PRUEBA } from './horarios';
 
 // Minutos de gracia después de cambiar la hora para aceptar el slot anterior
 // (evita rechazos justo en el cambio de hora por desfases de reloj).
@@ -42,7 +42,8 @@ function slotVigente(slot, ahora) {
 
 /**
  * Valida un QR escaneado contra el alumno y el momento actual.
- * Devuelve { ok: true } o { ok: false, motivo } (motivo listo para mostrar).
+ * Devuelve { ok: true, periodo } o { ok: false, motivo } (motivo listo para mostrar).
+ * `periodo` = bloque de clase en el que marcó (incluye materia: 'Pdisc', 'PP', …).
  */
 export function validarQr(texto, alumno, ahora = new Date()) {
   const partes = String(texto ?? '').split('|').map((p) => p.trim());
@@ -76,17 +77,21 @@ export function validarQr(texto, alumno, ahora = new Date()) {
     return { ok: false, motivo: 'Hoy no hay clases' };
   }
 
-  if (!cursoEnClaseAhora(cursoAlumno, ahora)) {
+  const periodo = periodoDeCursoAhora(cursoAlumno, ahora);
+  if (!periodo) {
     const p = proximaClase(cursoAlumno, ahora);
     const cuando =
       p?.cuando === 'hoy' ? 'hoy' : p?.cuando === 'manana' ? 'mañana' : 'el próximo día hábil';
+    // Si el próximo bloque tiene materia asignada (ej.: PP, Pdisc), la mostramos.
+    const materia = p?.periodo?.materia ? `de ${p.periodo.materia} ` : '';
     return {
       ok: false,
       motivo: p
-        ? `Tu curso (${cursoAlumno}) no tiene clase ahora · próxima clase ${cuando} ${p.periodo.inicio}`
+        ? `Tu curso (${cursoAlumno}) no tiene clase ahora · próxima clase ${materia}${cuando} a las ${p.periodo.inicio}`
         : `Tu curso (${cursoAlumno}) no tiene clase ahora`,
     };
   }
 
-  return { ok: true };
+  // ok → devolvemos el período actual (para que la app muestre la materia)
+  return { ok: true, periodo };
 }

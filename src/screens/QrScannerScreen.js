@@ -17,6 +17,7 @@ export default function QrScannerScreen({ navigation }) {
   const [registro, setRegistro] = useState(null); // asistencia del alumno registrada
   const [yaMarcada, setYaMarcada] = useState(false);
   const [rechazo, setRechazo] = useState(null); // motivo de rechazo del QR dinámico
+  const [materiaOk, setMateriaOk] = useState(null); // materia del bloque en el que marcó (ej.: PP)
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -49,13 +50,16 @@ export default function QrScannerScreen({ navigation }) {
         setRegistro(reg);
         setYaMarcada(!!reg?.ya);
         setRechazo(null);
+        setMateriaOk(res.periodo?.materia || null);
       } else {
         setRegistro(null);
         setRechazo(res.motivo);
+        setMateriaOk(null);
       }
     } else {
       setRegistro(null);
       setRechazo("Solo los alumnos registran asistencia escaneando el QR");
+      setMateriaOk(null);
     }
   };
 
@@ -63,6 +67,7 @@ export default function QrScannerScreen({ navigation }) {
     setScanned(false);
     setScannedData(null);
     setRechazo(null);
+    setMateriaOk(null);
   };
 
   // La pestaña QR no tiene historial atrás: si no se puede "goBack", volvemos a Home
@@ -205,6 +210,7 @@ export default function QrScannerScreen({ navigation }) {
                   </Text>
                   <Text style={s.resultData}>
                     {`Presente · ${registro.hora}`}
+                    {materiaOk ? ` · ${materiaOk}` : ""}
                     {registro.curso ? `\n${registro.curso} · ${registro.alumno}` : ""}
                   </Text>
                 </View>
