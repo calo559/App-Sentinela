@@ -1,8 +1,9 @@
 // src/qr/qrDinamico.js — Validación del QR dinámico de asistencia.
 //
-// El QR lo GENERA la pantalla de la entrada (qr-entrada/index.html);
-// esta app solo LO VALIDA cuando el alumno escanea. El contrato (secreto y
-// formato) vive en qr-entrada/qr-core.js, compartido por ambos lados.
+// El QR lo GENERA la pantalla de la entrada (../qr-entrada/index.html, carpeta
+// hermana a centinela-system); esta app solo LO VALIDA cuando el alumno escanea.
+// El contrato (secreto y formato) vive en ../qr-entrada/qr-core.js, que la
+// página carga con <script> y esta app importa → siempre sincronizados.
 //
 // Capas de validación:
 //   1. Firma    → el payload lleva una firma con secreto: QRs truchos no pasan.
@@ -16,7 +17,7 @@
 // Formato del payload:  SIA1|<fecha>|<slot>|<firma>
 //   ej: SIA1|2026-09-29|07|k3j9x2p1
 
-import QrCore from '../../qr-entrada/qr-core';
+import QrCore from '../../../qr-entrada/qr-core';
 import { etiquetaCurso } from '../utils/malla';
 import { esDiaClase, cursoEnClaseAhora, proximaClase, MODO_PRUEBA } from './horarios';
 
