@@ -464,9 +464,20 @@ export default function HomeScreen({ navigation }) {
               <View style={s.cardHeadInfo}>
                 <Text style={s.eyebrow}>MI ASISTENCIA</Text>
                 <Text style={s.cardMeta}>Este año lectivo · 26 días con clase</Text>
-                <Text style={[s.todayLine, { color: hoy ? colors.success : colors.textSecondary }]}>
+                <Text
+                  style={[
+                    s.todayLine,
+                    {
+                      color: hoy
+                        ? hoy.status === 'tarde'
+                          ? colors.warning
+                          : colors.success
+                        : colors.textSecondary,
+                    },
+                  ]}
+                >
                   {hoy
-                    ? `Hoy: Presente · ${hoy.hora}`
+                    ? `Hoy: ${hoy.status === 'tarde' ? '⏰ Llegada tarde' : 'Presente'} · ${hoy.hora}`
                     : 'Hoy: sin marcar · Escaneá el QR'}
                 </Text>
               </View>

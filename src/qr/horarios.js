@@ -18,6 +18,10 @@ export const PERIODOS = [
 export const MARGEN_INICIO_MIN = 10;
 export const MARGEN_FIN_MIN = 10;
 
+// Escaneo dentro de los N minutos del INICIO del bloque → se registra "presente";
+// a partir del minuto N+1 → "llegada tarde" (se decide al escanear el QR).
+export const TOLERANCIA_TARDE_MIN = 10;
+
 // Días con clase (0 = domingo … 6 = sábado)
 export const DIAS_CLASE = [1, 2, 3, 4, 5];
 

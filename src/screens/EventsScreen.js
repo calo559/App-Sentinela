@@ -7,6 +7,7 @@ import Card from '../components/Card';
 import Header from '../components/Header';
 import Calendar from '../components/Calendar';
 import { getActiveUser } from '../services/authService';
+import { getToday } from '../services/attendanceService';
 
 // Fechas relativas a hoy para que siempre se vean en el año/mes actual
 const daysAgo = (n) => {
@@ -191,12 +192,35 @@ export default function EventsScreen({ navigation }) {
   };
 
   const activeUser = getActiveUser();
+  const esAlumno = activeUser?.role === 'alumno';
   // El alumno/preceptor ve solo SU curso; el docente (sin curso asignado) ve todos
   const myCourse =
     activeUser?.curso && activeUser?.division ? `${activeUser.curso}${activeUser.division}` : null;
-  const courseRecords = myCourse
-    ? attendanceHistory.filter((item) => item.course === myCourse)
-    : attendanceHistory;
+
+  // Registro REAL de hoy: el que se creó al escanear el QR de la entrada.
+  const miRegistro = getToday();
+  const miItem = (() => {
+    if (!miRegistro) return null;
+    // Si hay curso en pantalla, solo mostramos registros de ese curso
+    if (myCourse && miRegistro.curso !== myCourse) return null;
+    return {
+      id: 'mi-asistencia-hoy',
+      student: miRegistro.alumno || 'Tú',
+      course: miRegistro.curso || myCourse || '',
+      date: miRegistro.fecha,
+      time: miRegistro.hora,
+      status: miRegistro.status || 'presente',
+      observations:
+        miRegistro.status === 'tarde'
+          ? 'Llegada tarde al escanear el QR'
+          : 'Escaneó el QR de la clase',
+    };
+  })();
+
+  const courseRecords = [
+    ...(miItem ? [miItem] : []),
+    ...attendanceHistory.filter((item) => !myCourse || item.course === myCourse),
+  ];
 
   // Inicial seguro aunque el nombre venga vacío
   const initial = (name) => {
@@ -494,6 +518,34 @@ export default function EventsScreen({ navigation }) {
       color: colors.textSecondary,
       marginTop: 4,
     },
+    myAttendanceCard: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      marginBottom: 4,
+      padding: 14,
+      alignItems: 'center',
+    },
+    myAttendanceTitle: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      letterSpacing: 1,
+      marginBottom: 10,
+    },
+    myAttendanceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    myAttendanceTime: {
+      ...typography.body,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    myAttendanceEmpty: {
+      ...typography.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
     reportButton: {
       position: 'absolute',
       bottom: 20,
@@ -516,8 +568,33 @@ export default function EventsScreen({ navigation }) {
     },
   }), [colors]);
 
-  const renderListHeader = () => (
+  const renderListHeader = () => {
+    const miCfg = getStatusConfig(miRegistro?.status || 'presente');
+    return (
     <>
+      {/* Mi asistencia de HOY: registro real del escaneo del QR de la entrada */}
+      {esAlumno && (
+        <Card style={s.myAttendanceCard}>
+          <Text style={s.myAttendanceTitle}>TU ASISTENCIA DE HOY</Text>
+          {miRegistro ? (
+            <View style={s.myAttendanceRow}>
+              <View style={[s.statusBadge, { backgroundColor: miCfg.color + '15' }]}>
+                <Text style={[s.statusText, { color: miCfg.color }]}>
+                  {miCfg.icon} {miCfg.label}
+                </Text>
+              </View>
+              <Text style={s.myAttendanceTime}>
+                🕐 {miRegistro.hora} hs{miRegistro.bloque ? ` · ${miRegistro.bloque}` : ''}
+              </Text>
+            </View>
+          ) : (
+            <Text style={s.myAttendanceEmpty}>
+              Todavía no escaneaste el QR de hoy · acercate a la entrada
+            </Text>
+          )}
+        </Card>
+      )}
+
       <Calendar
         records={courseRecords}
         selectedDate={selectedDate}
@@ -623,7 +700,8 @@ export default function EventsScreen({ navigation }) {
         </View>
       </View>
     </>
-  );
+    );
+  };
 
   return (
     <View style={s.container}>
