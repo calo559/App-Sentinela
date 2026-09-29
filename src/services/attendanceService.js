@@ -25,8 +25,8 @@ function write(data) {
 
 let mem = null;
 
-export function fechaHoy() {
-  const d = new Date();
+export function fechaHoy(base = new Date()) {
+  const d = base;
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }

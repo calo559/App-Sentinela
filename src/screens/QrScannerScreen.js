@@ -7,6 +7,7 @@ import { useTheme } from "../context/ThemeContext";
 import { SCREENS } from "../utils/constants";
 import { getActiveUser } from "../services/authService";
 import { markPresentToday } from "../services/attendanceService";
+import { validarQr } from "../qr/qrDinamico";
 
 export default function QrScannerScreen({ navigation }) {
   const { colors } = useTheme();
@@ -15,6 +16,7 @@ export default function QrScannerScreen({ navigation }) {
   const [scannedData, setScannedData] = useState(null);
   const [registro, setRegistro] = useState(null); // asistencia del alumno registrada
   const [yaMarcada, setYaMarcada] = useState(false);
+  const [rechazo, setRechazo] = useState(null); // motivo de rechazo del QR dinámico
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -37,18 +39,30 @@ export default function QrScannerScreen({ navigation }) {
     setScanned(true);
     setScannedData(data);
 
-    // El alumno se marca presente al escanear el QR de su clase
+    // El alumno se marca presente solo si el QR de la entrada es válido
+    // (firma correcta, de hoy, hora vigente y en horario de clase de SU curso)
     const user = getActiveUser();
     if (user?.role === "alumno") {
-      const reg = markPresentToday(user);
-      setRegistro(reg);
-      setYaMarcada(!!reg?.ya);
+      const res = validarQr(data, user);
+      if (res.ok) {
+        const reg = markPresentToday(user);
+        setRegistro(reg);
+        setYaMarcada(!!reg?.ya);
+        setRechazo(null);
+      } else {
+        setRegistro(null);
+        setRechazo(res.motivo);
+      }
+    } else {
+      setRegistro(null);
+      setRechazo("Solo los alumnos registran asistencia escaneando el QR");
     }
   };
 
   const handleScanAgain = () => {
     setScanned(false);
     setScannedData(null);
+    setRechazo(null);
   };
 
   // La pestaña QR no tiene historial atrás: si no se puede "goBack", volvemos a Home
@@ -193,6 +207,18 @@ export default function QrScannerScreen({ navigation }) {
                     {`Presente · ${registro.hora}`}
                     {registro.curso ? `\n${registro.curso} · ${registro.alumno}` : ""}
                   </Text>
+                </View>
+              ) : rechazo ? (
+                <View>
+                  <View style={s.successIcon}>
+                    <MaterialCommunityIcons
+                      name="close-circle"
+                      size={44}
+                      color={colors.error}
+                    />
+                  </View>
+                  <Text style={s.resultTitle}>QR no válido</Text>
+                  <Text style={s.resultData}>{rechazo}</Text>
                 </View>
               ) : (
                 <View>

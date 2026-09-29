@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR de asistencia · Pantalla de entrada</title>
+  <style>
+    :root {
+      --bg: #0B1628;
+      --surface: #0E1B30;
+      --border: #1A2E4A;
+      --cyan: #00C9DB;
+      --text: #EAF4FF;
+      --text2: #8BB8D6;
+      --error: #F472B6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(1400px 800px at 50% -15%, #12294a 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      text-align: center;
+      padding: 3vh 4vw;
+    }
+    header .escuela {
+      font-size: clamp(20px, 3vw, 36px);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    header .sistema {
+      color: var(--cyan);
+      font-size: clamp(14px, 1.6vw, 22px);
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(12px, 2.2vh, 26px);
+      width: 100%;
+    }
+    .instruccion {
+      font-size: clamp(16px, 2.2vw, 28px);
+      color: var(--text2);
+    }
+    .instruccion b { color: var(--text); }
+    .qr-card {
+      background: #FFFFFF;
+      border-radius: 24px;
+      padding: clamp(14px, 2.5vmin, 30px);
+      box-shadow:
+        0 0 0 4px rgba(0, 201, 219, 0.35),
+        0 25px 60px rgba(0, 0, 0, 0.55);
+    }
+    #qr svg {
+      display: block;
+      width: min(56vmin, 460px);
+      height: auto;
+    }
+    .vigencia {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 24px;
+      font-size: clamp(14px, 1.8vw, 22px);
+      color: var(--text2);
+      font-variant-numeric: tabular-nums;
+    }
+    .vigencia b { color: var(--cyan); }
+    .vigencia .error { color: var(--error); font-weight: 600; }
+    .nota {
+      font-size: clamp(12px, 1.4vw, 17px);
+      color: #6F9CC0;
+      max-width: 760px;
+      line-height: 1.55;
+    }
+    footer {
+      color: var(--text2);
+      font-size: clamp(14px, 1.8vw, 22px);
+      font-variant-numeric: tabular-nums;
+      text-transform: capitalize;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="escuela">Escuela Técnica N°3</div>
+    <div class="sistema">Centinela · Registro de asistencia</div>
+  </header>
+
+  <main>
+    <div class="instruccion">Escaneá el código con la app <b>Centinela</b></div>
+    <div class="qr-card"><div id="qr"></div></div>
+    <div class="vigencia" id="vigencia">Cargando…</div>
+    <div class="nota">
+      El QR se renueva solo cada hora. La asistencia se registra únicamente
+      dentro del horario de clase de tu curso (1ª o 2ª hora).
+    </div>
+  </main>
+
+  <footer><span id="fecha">—</span> · <span id="reloj">—</span></footer>
+
+  <!-- qrcode.js: librería vendored de npm "qrcode-generator" (MIT) para dibujar el QR -->
+  <script src="./qrcode.js"></script>
+  <!-- qr-core.js: mismo archivo que usa la app → secreto y formato siempre sincronizados -->
+  <script src="./qr-core.js"></script>
+  <script>
+    (function () {
+      var ultimoPayload = null;
+      var qrBox = document.getElementById('qr');
+
+      function relleno(n) { return (n < 10 ? '0' : '') + n; }
+
+      function pintarQR(ahora) {
+        var payload = window.QrCore.generarPayload(ahora);
+        window.__payloadActual = payload; // visible desde la consola (debug / pruebas)
+        if (payload === ultimoPayload) return; // solo redibuja cuando cambia la hora
+        ultimoPayload = payload;
+        var qr = window.qrcode(0, 'M'); // 0 = tamaño automático
+        qr.addData(payload);
+        qr.make();
+        qrBox.innerHTML = qr.createSvgTag({
+          cellSize: 4,
+          margin: 4,
+          scalable: true,
+          alt: 'QR de asistencia',
+        });
+      }
+
+      function tick() {
+        try {
+          var ahora = new Date();
+          pintarQR(ahora);
+
+          // Cuenta regresiva hasta el próximo cambio de QR (en el cambio de hora)
+          var hastaCambio = (60 - ahora.getMinutes()) * 60 - ahora.getSeconds();
+          document.getElementById('vigencia').innerHTML =
+            'Cambia en <b>' +
+            relleno(Math.floor(hastaCambio / 60)) + ':' + relleno(hastaCambio % 60) +
+            '</b> (a las ' + relleno((ahora.getHours() + 1) % 24) + ':00)';
+
+          document.getElementById('reloj').textContent =
+            relleno(ahora.getHours()) + ':' + relleno(ahora.getMinutes()) + ':' + relleno(ahora.getSeconds());
+          document.getElementById('fecha').textContent = ahora.toLocaleDateString('es-AR', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          });
+        } catch (e) {
+          document.getElementById('vigencia').innerHTML =
+            '<span class="error">Error al generar el QR: ' + e.message + '</span>';
+        }
+      }
+
+      tick();
+      setInterval(tick, 1000);
+
+      // Si el navegador lo permite, evitamos que la pantalla se apague.
+      if (navigator.wakeLock && navigator.wakeLock.request) {
+        navigator.wakeLock.request('screen').catch(function () {});
+      }
+    })();
+  </script>
+</body>
+</html>

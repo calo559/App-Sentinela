@@ -9,10 +9,10 @@ export const ROLE_INFO = {
 const STUDENT_TABS = [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE];
 
 // Secciones visibles según rol:
-// - alumno:      escanea el QR → se marca presente él mismo
-// - preceptor:   no escanea QR
+// - alumno:      escanea el QR de la entrada → se marca presente él mismo
+// - preceptor:   no escanea ni muestra QR (el QR vive en la pantalla de la entrada)
 // - docente:     NO toma asistencia (el alumno se marca al escanear);
-//                su rol en el Boletín es cargar notas e informes
+//                en el Boletín carga notas
 // Settings ya NO es una sección: vive dentro de Perfil (Stack "Settings").
 const QR_FOR_ROLES = ['alumno'];
 
@@ -27,8 +27,9 @@ const TABS_WITH_QR_CENTER = [
 
 export const TABS_BY_ROLE = {
   alumno: [...TABS_WITH_QR_CENTER],
-  preceptor: STUDENT_TABS,
-  docente: STUDENT_TABS, // sin QR ni FAB: el alumno se marca al escanear
+  // docente y preceptor: no escanean ni generan QR (está en la pantalla de la entrada)
+  preceptor: [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE],
+  docente: [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE],
 };
 
 export function hasQrScanner(role) {
@@ -40,6 +41,6 @@ export function tabsForRole(role) {
 }
 
 export function canTakeAttendance() {
-  // Nadie "toma asistencia": el alumno se registra escaneando el QR de la clase.
+  // Nadie "toma asistencia": el alumno se registra escaneando el QR de la entrada.
   return false;
 }
