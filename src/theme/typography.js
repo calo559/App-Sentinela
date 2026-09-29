@@ -5,7 +5,7 @@ const typography = {
   body: { fontSize: 16, fontWeight: '400' },
   bodySmall: { fontSize: 14, fontWeight: '400' },
   subtitle2: { fontSize: 14, fontWeight: '600' },
-  caption: { fontSize: 13, fontWeight: '400', color: '#8E8E93' },
+  caption: { fontSize: 13, fontWeight: '400' }, // el color lo aporta cada pantalla (textSecondary)
   button: { fontSize: 16, fontWeight: '600' },
 };
 

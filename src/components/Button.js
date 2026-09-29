@@ -19,9 +19,9 @@ export default function Button({ title, onPress, variant = 'primary', loading, d
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator color={isPrimary ? colors.white : colors.primary} />
+        <ActivityIndicator color={isPrimary ? (colors.onPrimary || colors.white) : colors.primary} />
       ) : (
-        <Text style={[{ ...typography.button }, isPrimary ? { color: colors.white } : { color: colors.primary }]}>
+        <Text style={[{ ...typography.button }, isPrimary ? { color: colors.onPrimary || colors.white } : { color: colors.primary }]}>
           {title}
         </Text>
       )}

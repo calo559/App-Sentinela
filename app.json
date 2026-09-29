@@ -23,7 +23,8 @@
     },
     "extra": {},
     "plugins": [
-      "expo-camera"
+      "expo-camera",
+      "expo-status-bar"
     ]
   }
 }

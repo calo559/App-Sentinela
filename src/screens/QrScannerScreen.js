@@ -2,13 +2,19 @@ import { useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, Animated } from "react-native";
 import { useMemo } from "react";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { SCREENS } from "../utils/constants";
+import { getActiveUser } from "../services/authService";
+import { markPresentToday } from "../services/attendanceService";
 
 export default function QrScannerScreen({ navigation }) {
   const { colors } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [scannedData, setScannedData] = useState(null);
+  const [registro, setRegistro] = useState(null); // asistencia del alumno registrada
+  const [yaMarcada, setYaMarcada] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -30,11 +36,28 @@ export default function QrScannerScreen({ navigation }) {
     if (scanned) return;
     setScanned(true);
     setScannedData(data);
+
+    // El alumno se marca presente al escanear el QR de su clase
+    const user = getActiveUser();
+    if (user?.role === "alumno") {
+      const reg = markPresentToday(user);
+      setRegistro(reg);
+      setYaMarcada(!!reg?.ya);
+    }
   };
 
   const handleScanAgain = () => {
     setScanned(false);
     setScannedData(null);
+  };
+
+  // La pestaña QR no tiene historial atrás: si no se puede "goBack", volvemos a Home
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate(SCREENS.HOME);
+    }
   };
 
   const s = useMemo(() => ({
@@ -87,13 +110,14 @@ export default function QrScannerScreen({ navigation }) {
       borderRadius: 16, padding: 20, alignItems: "center", marginBottom: 40,
     },
     resultTitle: { color: colors.white, fontSize: 14, fontWeight: "600", marginBottom: 8 },
+    successIcon: { marginBottom: 8 },
     resultData: {
       color: colors.secondary, fontSize: 14, fontWeight: "500",
       textAlign: "center", marginBottom: 16,
     },
     button: {
       backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24,
-      borderRadius: 12,
+      borderRadius: 12, alignSelf: "center",
     },
     buttonText: { color: colors.white, fontWeight: "700", fontSize: 14 },
     message: { color: colors.text, fontSize: 16, textAlign: "center", marginTop: 40 },
@@ -110,6 +134,11 @@ export default function QrScannerScreen({ navigation }) {
   if (!permission.granted) {
     return (
       <View style={s.container}>
+        <View style={{ paddingTop: 50, paddingHorizontal: 20 }}>
+          <TouchableOpacity onPress={handleBack} style={s.backButton}>
+            <Text style={s.backText}>← Volver</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={s.message}>Sin acceso a la cámara</Text>
         <TouchableOpacity style={s.button} onPress={requestPermission}>
           <Text style={s.buttonText}>Conceder permiso</Text>
@@ -128,7 +157,7 @@ export default function QrScannerScreen({ navigation }) {
       >
         <View style={s.overlay}>
           <View style={s.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
+            <TouchableOpacity onPress={handleBack} style={s.backButton}>
               <Text style={s.backText}>← Volver</Text>
             </TouchableOpacity>
             <Text style={s.headerTitle}>Escanear QR</Text>
@@ -146,8 +175,31 @@ export default function QrScannerScreen({ navigation }) {
 
           {scanned && scannedData ? (
             <View style={s.resultContainer}>
-              <Text style={s.resultTitle}>Código escaneado:</Text>
-              <Text style={s.resultData}>{scannedData}</Text>
+              {registro ? (
+                <View>
+                  <View style={s.successIcon}>
+                    <MaterialCommunityIcons
+                      name="check-circle"
+                      size={44}
+                      color={colors.success}
+                    />
+                  </View>
+                  <Text style={s.resultTitle}>
+                    {yaMarcada
+                      ? "Tu asistencia de hoy ya estaba registrada"
+                      : "¡Asistencia registrada!"}
+                  </Text>
+                  <Text style={s.resultData}>
+                    {`Presente · ${registro.hora}`}
+                    {registro.curso ? `\n${registro.curso} · ${registro.alumno}` : ""}
+                  </Text>
+                </View>
+              ) : (
+                <View>
+                  <Text style={s.resultTitle}>Código escaneado:</Text>
+                  <Text style={s.resultData}>{scannedData}</Text>
+                </View>
+              )}
               <TouchableOpacity style={s.button} onPress={handleScanAgain}>
                 <Text style={s.buttonText}>Escanear otro</Text>
               </TouchableOpacity>

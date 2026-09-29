@@ -1,4 +1,4 @@
-// SettingsScreen.jsx
+// SettingsScreen.jsx — ahora se abre desde Perfil → "Configuración"
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
@@ -7,12 +7,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Animated,
-  Alert,
   Share,
   Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { notify } from "../utils/notify";
 import typography from "../theme/typography";
 
 export default function SettingsScreen({ navigation }) {
@@ -65,12 +66,12 @@ export default function SettingsScreen({ navigation }) {
         title: "Compartir aplicación",
       });
     } catch (error) {
-      Alert.alert("Error", "No se pudo compartir la aplicación");
+      notify("Error", "No se pudo compartir la aplicación");
     }
   };
 
   const handleClearData = () => {
-    Alert.alert(
+    notify(
       "Limpiar datos",
       "¿Estás seguro que deseas limpiar los datos de caché? Esta acción no afectará tus datos personales.",
       [
@@ -78,25 +79,34 @@ export default function SettingsScreen({ navigation }) {
         {
           text: "Limpiar",
           style: "destructive",
-          onPress: () => Alert.alert("Éxito", "Datos de caché eliminados correctamente"),
+          onPress: () => notify("Éxito", "Datos de caché eliminados correctamente"),
         },
       ],
     );
   };
 
-  const handleContactSupport = () => {
-    Linking.openURL("mailto:soporte@escuelatecnica3.edu?subject=Soporte técnico - Sistema de Asistencia");
+  const handleContactSupport = async () => {
+    try {
+      await Linking.openURL("mailto:soporte@escuelatecnica3.edu?subject=Soporte técnico - Sistema de Asistencia");
+    } catch (error) {
+      notify("Error", "No se pudo abrir el cliente de correo");
+    }
   };
 
   const handleVersionPress = () => {
-    Alert.alert("Versión 2.0.0", 'Sistema de Asistencia Escolar\nEscuela Técnica Nº 3 "S.A. de Padrón"');
+    notify("Versión 2.0.0", 'Sistema de Asistencia Escolar\nEscuela Técnica Nº 3 "S.A. de Padrón"');
+  };
+
+  const handleBack = () => {
+    if (navigation?.canGoBack?.()) navigation.goBack();
+    else navigation?.navigate?.("Home");
   };
 
   // Secciones de configuración
   const sections = [
     {
-      title: "🔔 NOTIFICACIONES",
-      icon: "🔔",
+      title: "NOTIFICACIONES",
+      icon: "bell-outline",
       items: [
         {
           label: "Notificaciones push",
@@ -122,8 +132,8 @@ export default function SettingsScreen({ navigation }) {
       ],
     },
     {
-      title: "📊 ASISTENCIA",
-      icon: "📊",
+      title: "ASISTENCIA",
+      icon: "calendar-check-outline",
       items: [
         {
           label: "Asistencia automática",
@@ -142,8 +152,8 @@ export default function SettingsScreen({ navigation }) {
       ],
     },
     {
-      title: "🎨 APARIENCIA",
-      icon: "🎨",
+      title: "APARIENCIA",
+      icon: "palette-outline",
       items: [
         {
           label: "Modo nocturno",
@@ -157,7 +167,7 @@ export default function SettingsScreen({ navigation }) {
           description: language === "es" ? "Español" : "English",
           value: language,
           onToggle: () => {
-            Alert.alert("Idioma", "Selecciona un idioma", [
+            notify("Idioma", "Selecciona un idioma", [
               { text: "Español", onPress: () => setLanguage("es") },
               { text: "English", onPress: () => setLanguage("en") },
             ]);
@@ -167,8 +177,8 @@ export default function SettingsScreen({ navigation }) {
       ],
     },
     {
-      title: "ℹ️ ACERCA DE",
-      icon: "ℹ️",
+      title: "ACERCA DE",
+      icon: "information-outline",
       items: [
         {
           label: "Compartir aplicación",
@@ -199,8 +209,21 @@ export default function SettingsScreen({ navigation }) {
   ];
 
   return (
-    <LinearGradient colors={[colors.background, isDarkMode ? colors.surface : "#F0F4F0"]} style={s.container}>
+    <LinearGradient colors={[colors.background, isDarkMode ? colors.surface : colors.surfaceVariant]} style={s.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+        {/* Barra superior con botón de vuelta (se abre desde Perfil) */}
+        <View style={s.topBar}>
+          <TouchableOpacity
+            style={[s.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={handleBack}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[s.topTitle, { color: colors.text }]}>Configuración</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
         <Animated.View style={[s.headerContainer, { transform: [{ scale: headerScale }], opacity: fadeAnim }]}>
           <LinearGradient
             colors={[colors.primary, colors.primaryDark]}
@@ -209,7 +232,7 @@ export default function SettingsScreen({ navigation }) {
             style={s.headerGradient}
           >
             <View style={s.headerIconContainer}>
-              <Text style={s.headerIcon}>⚙️</Text>
+              <MaterialCommunityIcons name="cog-outline" size={34} color="#FFFFFF" />
             </View>
             <Text style={s.headerTitle}>Configuración</Text>
             <Text style={s.headerSubtitle}>Personaliza tu experiencia en el sistema</Text>
@@ -219,8 +242,8 @@ export default function SettingsScreen({ navigation }) {
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           {sections.map((section) => (
             <Animated.View key={section.title} style={[s.sectionContainer, { backgroundColor: colors.surface, transform: [{ scale: cardScale }] }]}>
-              <View style={[s.sectionHeader, { backgroundColor: isDarkMode ? colors.surfaceVariant : "#FAFAFA", borderBottomColor: colors.border }]}>
-                <Text style={s.sectionIcon}>{section.icon}</Text>
+              <View style={[s.sectionHeader, { backgroundColor: colors.surfaceVariant, borderBottomColor: colors.border }]}>
+                <MaterialCommunityIcons name={section.icon} size={18} color={colors.primary} style={s.sectionIcon} />
                 <Text style={[s.sectionTitle, { color: colors.primary }]}>{section.title}</Text>
               </View>
               <View style={s.sectionContent}>
@@ -281,6 +304,13 @@ export default function SettingsScreen({ navigation }) {
 const s = {
   container: { flex: 1 },
   scrollContent: { paddingBottom: 30 },
+  topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+  backButton: {
+    width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 4,
+  },
+  topTitle: { flex: 1, textAlign: "center", fontSize: 16, fontWeight: "800" },
   headerContainer: { marginHorizontal: 16, marginTop: 20, marginBottom: 24, borderRadius: 24, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
   headerGradient: { paddingVertical: 28, alignItems: "center" },
   headerIconContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center", marginBottom: 16 },
@@ -289,7 +319,7 @@ const s = {
   headerSubtitle: { fontSize: 14, color: "rgba(255,255,255,0.9)", textAlign: "center" },
   sectionContainer: { marginHorizontal: 16, marginBottom: 20, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4, overflow: "hidden" },
   sectionHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
-  sectionIcon: { fontSize: 18, marginRight: 10 },
+  sectionIcon: { marginRight: 10 },
   sectionTitle: { ...typography.subtitle2, fontWeight: "700", letterSpacing: 0.5 },
   sectionContent: { paddingHorizontal: 16 },
   settingItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },

@@ -3,8 +3,8 @@ const BASE_URL = 'https://api.centinela-system.com';
 const api = {
   async request(endpoint, options = {}) {
     const config = {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     };
     try {
       const response = await fetch(`${BASE_URL}${endpoint}`, config);

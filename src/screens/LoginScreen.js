@@ -1,26 +1,30 @@
-// LoginScreen.jsx
+// LoginScreen — acceso al sistema (auth simulado con authService)
 import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
   ScrollView,
   Animated,
-  Dimensions,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useTheme } from "../context/ThemeContext";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { login } from "../services/authService";
+import { notify } from "../utils/notify";
+import AuthBrand from "../components/AuthBrand";
+import { InputField, PasswordField } from "../components/FormFields";
 
-const { width, height } = Dimensions.get("window");
+const DEMO_ACCOUNTS = [
+  { role: "Alumno", email: "alumno@escuela.edu", color: "#00C9DB" },
+  { role: "Docente", email: "docente@escuela.edu", color: "#6B3FA0" },
+  { role: "Preceptor", email: "preceptor@escuela.edu", color: "#34D399" },
+];
 
 export default function LoginScreen({ navigation }) {
-  const { colors } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,101 +33,57 @@ export default function LoginScreen({ navigation }) {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  // Animations
+  // Adaptador para que InputField/PasswordField (que usan un objeto de errores)
+  // escriban en los estados simples de esta pantalla.
+  const errors = { email: emailError, password: passwordError };
+  const setErrors = (fn) => {
+    const next = typeof fn === "function" ? fn(errors) : fn;
+    setEmailError(next.email || "");
+    setPasswordError(next.password || "");
+  };
+
+  // Animaciones
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const logoScale = useRef(new Animated.Value(0.3)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const floatAnim = useRef(new Animated.Value(0)).current;
-
-  // Floating background shapes animation
   const float1 = useRef(new Animated.Value(0)).current;
   const float2 = useRef(new Animated.Value(0)).current;
   const float3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Entrance animations
     Animated.parallel([
-      Animated.spring(logoScale, {
-        toValue: 1,
-        friction: 4,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(logoOpacity, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        delay: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        friction: 6,
-        tension: 50,
-        delay: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 5,
-        tension: 45,
-        delay: 400,
-        useNativeDriver: true,
-      }),
+      Animated.spring(logoScale, { toValue: 1, friction: 4, tension: 40, useNativeDriver: true }),
+      Animated.timing(logoOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, delay: 300, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, friction: 6, tension: 50, delay: 300, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 5, tension: 45, delay: 400, useNativeDriver: true }),
     ]).start();
 
-    // Floating animations for background shapes
-    const createFloatingAnimation = (animatedValue, from, to, duration) => {
-      return Animated.loop(
+    const makeFloat = (val, dur) =>
+      Animated.loop(
         Animated.sequence([
-          Animated.timing(animatedValue, {
-            toValue: 1,
-            duration: duration,
-            useNativeDriver: true,
-          }),
-          Animated.timing(animatedValue, {
-            toValue: 0,
-            duration: duration,
-            useNativeDriver: true,
-          }),
-        ]),
+          Animated.timing(val, { toValue: 1, duration: dur, useNativeDriver: true }),
+          Animated.timing(val, { toValue: 0, duration: dur, useNativeDriver: true }),
+        ])
       );
-    };
 
-    createFloatingAnimation(float1, 0, 1, 3000).start();
-    createFloatingAnimation(float2, 0, 1, 4000).start();
-    createFloatingAnimation(float3, 0, 1, 3500).start();
+    makeFloat(float1, 6000).start();
+    makeFloat(float2, 8000).start();
+    makeFloat(float3, 7000).start();
   }, []);
 
-  const floatInterpolation1 = float1.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -20],
-  });
+  const floatY1 = float1.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
+  const floatY2 = float2.interpolate({ inputRange: [0, 1], outputRange: [0, 25] });
+  const floatY3 = float3.interpolate({ inputRange: [0, 1], outputRange: [0, -15] });
 
-  const floatInterpolation2 = float2.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 25],
-  });
-
-  const floatInterpolation3 = float3.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -15],
-  });
-
-  const handleLogin = async () => {
-    // Reset errors
+  const handleLogin = () => {
     setEmailError("");
     setPasswordError("");
 
     let hasError = false;
-
     if (!email.trim()) {
       setEmailError("El correo electrónico es requerido");
       hasError = true;
@@ -131,179 +91,150 @@ export default function LoginScreen({ navigation }) {
       setEmailError("Ingrese un correo electrónico válido");
       hasError = true;
     }
-
     if (!password) {
       setPasswordError("La contraseña es requerida");
       hasError = true;
     }
-
     if (hasError) return;
 
-    // Button press animation
     Animated.sequence([
-      Animated.spring(buttonScale, {
-        toValue: 0.95,
-        friction: 3,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-      Animated.spring(buttonScale, {
-        toValue: 1,
-        friction: 3,
-        tension: 40,
-        useNativeDriver: true,
-      }),
+      Animated.spring(buttonScale, { toValue: 0.96, friction: 3, tension: 40, useNativeDriver: true }),
+      Animated.spring(buttonScale, { toValue: 1, friction: 3, tension: 40, useNativeDriver: true }),
     ]).start();
 
     setLoading(true);
 
-    // Simulate login
-    setTimeout(() => {
-      setLoading(false);
-      // For demo, navigate to Home (you'll replace with actual auth)
+    try {
+      login(email.trim(), password);
       navigation.replace("Home");
-    }, 1500);
+    } catch (err) {
+      notify("No se pudo iniciar sesión", err.message);
+      setLoading(false);
+    }
+    // Si el login fue exitoso la pantalla se desmonta: no tocar el estado después.
   };
 
   const handleForgotPassword = () => {
-    Alert.alert("Recuperar Contraseña", "Se enviará un enlace de recuperación a su correo electrónico registrado.", [
-      { text: "OK", onPress: () => console.log("Recuperar contraseña") },
-    ]);
+    notify(
+      "Recuperar contraseña",
+      "Te enviaremos un enlace de recuperación a tu correo electrónico registrado."
+    );
   };
 
   return (
     <LinearGradient
-      colors={["#1B5E20", "#2E7D32", "#388E3C"]}
+      colors={["#00C9DB", "#0B1628", "#6B3FA0"]}
       style={styles.container}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
     >
-      {/* Animated Background Floating Shapes */}
-      <Animated.View style={[styles.floatingShape1, { transform: [{ translateY: floatInterpolation1 }] }]} />
-      <Animated.View style={[styles.floatingShape2, { transform: [{ translateY: floatInterpolation2 }] }]} />
-      <Animated.View style={[styles.floatingShape3, { transform: [{ translateY: floatInterpolation3 }] }]} />
+      {/* Formas de fondo sutiles */}
+      <Animated.View style={[styles.floatShape1, { transform: [{ translateY: floatY1 }] }]} />
+      <Animated.View style={[styles.floatShape2, { transform: [{ translateY: floatY2 }] }]} />
+      <Animated.View style={[styles.floatShape3, { transform: [{ translateY: floatY3 }] }]} />
 
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Logo and School Info */}
-          <Animated.View
-            style={[
-              styles.logoContainer,
-              {
-                opacity: logoOpacity,
-                transform: [{ scale: logoScale }],
-              },
-            ]}
-          >
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoIcon}>🎓</Text>
-            </View>
-            <Text style={styles.schoolName}>ESCUELA DE EDUCACIÓN{"\n"}SECUNDARIA TÉCNICA Nº 3</Text>
-            <Text style={styles.schoolSubtitle}>"S.A. de Padrón"</Text>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {/* Marca */}
+          <Animated.View style={{ opacity: logoOpacity, transform: [{ scale: logoScale }] }}>
+            <AuthBrand />
           </Animated.View>
 
-          {/* Login Form */}
+          {/* Tarjeta de acceso */}
           <Animated.View
             style={[
-              styles.formContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
-              },
+              styles.card,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] },
             ]}
           >
-            <Text style={styles.welcomeText}>Bienvenido</Text>
-            <Text style={styles.welcomeSubtext}>Ingrese sus credenciales para acceder al sistema</Text>
+            <Text style={styles.cardTitle}>Iniciar sesión</Text>
+            <Text style={styles.cardSubtitle}>Accedé con tu cuenta institucional</Text>
 
-            {/* Email Input */}
-            <View style={styles.inputGroup}>
-              <View style={styles.inputIconContainer}>
-                <Text style={styles.inputIcon}>📧</Text>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Correo Electrónico</Text>
-                <TextInput
-                  style={[styles.input, emailError && styles.inputError]}
-                  placeholder="usuario@institucion.edu"
-                  placeholderTextColor="rgba(255,255,255,0.5)"
-                  value={email}
-                  onChangeText={(text) => {
-                    setEmail(text);
-                    setEmailError("");
-                  }}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {emailError && <Text style={styles.errorText}>{emailError}</Text>}
-              </View>
-            </View>
+            <InputField
+              icon="email-outline"
+              label="Correo electrónico"
+              placeholder="usuario@institucion.edu"
+              value={email}
+              onChangeText={(t) => {
+                setEmail(t);
+                setEmailError("");
+              }}
+              errorKey="email"
+              errors={errors}
+              setErrors={setErrors}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
 
-            {/* Password Input */}
-            <View style={styles.inputGroup}>
-              <View style={styles.inputIconContainer}>
-                <Text style={styles.inputIcon}>🔒</Text>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Contraseña</Text>
-                <View style={styles.passwordWrapper}>
-                  <TextInput
-                    style={[styles.input, styles.passwordInput, passwordError && styles.inputError]}
-                    placeholder="Ingrese su contraseña"
-                    placeholderTextColor="rgba(255,255,255,0.5)"
-                    value={password}
-                    onChangeText={(text) => {
-                      setPassword(text);
-                      setPasswordError("");
-                    }}
-                    secureTextEntry={!showPassword}
-                  />
-                  <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword(!showPassword)}>
-                    <Text style={styles.eyeIcon}>{showPassword ? "👁️" : "👁️‍🗨️"}</Text>
-                  </TouchableOpacity>
-                </View>
-                {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
-              </View>
-            </View>
+            <PasswordField
+              label="Contraseña"
+              placeholder="Ingresá tu contraseña"
+              value={password}
+              onChangeText={(t) => {
+                setPassword(t);
+                setPasswordError("");
+              }}
+              errorKey="password"
+              errors={errors}
+              setErrors={setErrors}
+              showPassword={showPassword}
+              onToggleShow={() => setShowPassword((v) => !v)}
+            />
 
-            {/* Remember Me & Forgot Password */}
-            <View style={styles.optionsContainer}>
-              <TouchableOpacity style={styles.rememberContainer} onPress={() => setRememberMe(!rememberMe)}>
+            {/* Recordarme / recuperar */}
+            <View style={styles.optionsRow}>
+              <TouchableOpacity style={styles.remember} onPress={() => setRememberMe(!rememberMe)}>
                 <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                  {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+                  {rememberMe && <MaterialCommunityIcons name="check" size={13} color="#0B1628" />}
                 </View>
                 <Text style={styles.rememberText}>Recordarme</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={handleForgotPassword}>
-                <Text style={styles.forgotText}>¿Olvidó su contraseña?</Text>
+              <TouchableOpacity onPress={handleForgotPassword} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.link}>¿Olvidaste tu contraseña?</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Login Button */}
+            {/* Botón */}
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleLogin} disabled={loading}>
                 {loading ? (
-                  <ActivityIndicator color="#1B5E20" size="small" />
+                  <ActivityIndicator color="#0B1628" size="small" />
                 ) : (
-                  <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+                  <>
+                    <Text style={styles.primaryButtonText}>Ingresar</Text>
+                    <MaterialCommunityIcons name="arrow-right" size={18} color="#0B1628" />
+                  </>
                 )}
               </TouchableOpacity>
             </Animated.View>
 
-            {/* Register Link */}
-            <View style={styles.registerContainer}>
-              <Text style={styles.registerText}>¿No tiene una cuenta? </Text>
+            {/* Ir al registro */}
+            <View style={styles.footerRow}>
+              <Text style={styles.footerText}>¿No tenés una cuenta?</Text>
               <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-                <Text style={styles.registerLink}>Solicitar acceso</Text>
+                <Text style={styles.footerLink}>Solicitar acceso</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Demo Credentials */}
-            <View style={styles.demoContainer}>
-              <Text style={styles.demoTitle}>🔐 Credenciales de Demo</Text>
-              <Text style={styles.demoText}>📧 docente@escuela.edu</Text>
-              <Text style={styles.demoText}>🔑 123456</Text>
+            {/* Cuentas demo */}
+            <View style={styles.demoBox}>
+              <View style={styles.demoHeader}>
+                <MaterialCommunityIcons name="key-variant" size={13} color="#5A6B80" />
+                <Text style={styles.demoTitle}>CUENTAS DE DEMOSTRACIÓN</Text>
+              </View>
+              {DEMO_ACCOUNTS.map((acc, idx) => (
+                <View
+                  key={acc.email}
+                  style={[styles.demoRow, idx < DEMO_ACCOUNTS.length - 1 && styles.demoRowBorder]}
+                >
+                  <View style={[styles.demoDot, { backgroundColor: acc.color }]} />
+                  <Text style={styles.demoRole}>{acc.role}</Text>
+                  <Text style={styles.demoEmail} numberOfLines={1}>{acc.email}</Text>
+                  <Text style={styles.demoPass}>123456</Text>
+                </View>
+              ))}
             </View>
           </Animated.View>
         </ScrollView>
@@ -313,246 +244,123 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 52,
     paddingBottom: 40,
   },
-  floatingShape1: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(255,215,0,0.1)",
-    top: "10%",
-    left: -50,
+
+  // Formas de fondo
+  floatShape1: {
+    position: "absolute", width: 220, height: 220, borderRadius: 110,
+    backgroundColor: "rgba(0,201,219,0.10)", top: "8%", left: -60,
   },
-  floatingShape2: {
-    position: "absolute",
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: "rgba(255,215,0,0.08)",
-    bottom: "15%",
-    right: -30,
+  floatShape2: {
+    position: "absolute", width: 170, height: 170, borderRadius: 85,
+    backgroundColor: "rgba(107,63,160,0.16)", bottom: "12%", right: -45,
   },
-  floatingShape3: {
-    position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    top: "40%",
-    right: "20%",
+  floatShape3: {
+    position: "absolute", width: 120, height: 120, borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.05)", top: "42%", right: "16%",
   },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "rgba(255,215,0,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: "rgba(255,215,0,0.3)",
-  },
-  logoIcon: {
-    fontSize: 48,
-  },
-  schoolName: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    textAlign: "center",
-    marginBottom: 8,
-    textShadowColor: "rgba(0,0,0,0.2)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
-  },
-  schoolSubtitle: {
-    fontSize: 14,
-    color: "rgba(255,215,0,0.9)",
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  formContainer: {
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 28,
-    padding: 24,
+
+  // Tarjeta
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 22,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
     shadowRadius: 20,
     elevation: 15,
   },
-  welcomeText: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#1B5E20",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  welcomeSubtext: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginBottom: 32,
-  },
-  inputGroup: {
-    flexDirection: "row",
-    marginBottom: 20,
-    alignItems: "flex-start",
-  },
-  inputIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#E8F5E9",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  inputIcon: {
-    fontSize: 22,
-  },
-  inputWrapper: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#555",
-    marginBottom: 4,
-    marginLeft: 4,
-  },
-  input: {
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#333",
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-  },
-  inputError: {
-    borderColor: "#D32F2F",
-    borderWidth: 2,
-  },
-  passwordWrapper: {
-    position: "relative",
-  },
-  passwordInput: {
-    paddingRight: 48,
-  },
-  eyeButton: {
-    position: "absolute",
-    right: 12,
-    top: 12,
-  },
-  eyeIcon: {
-    fontSize: 20,
-  },
-  errorText: {
-    fontSize: 12,
-    color: "#D32F2F",
-    marginTop: 4,
-    marginLeft: 4,
-  },
-  optionsContainer: {
+  cardTitle: { fontSize: 26, fontWeight: "800", color: "#0B1628", marginBottom: 4 },
+  cardSubtitle: { fontSize: 13, color: "#5A6B80", marginBottom: 22 },
+
+  // Opciones
+  optionsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 28,
+    marginTop: 2,
+    marginBottom: 20,
   },
-  rememberContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  remember: { flexDirection: "row", alignItems: "center" },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#2E7D32",
-    marginRight: 8,
+    width: 20, height: 20, borderRadius: 6,
+    borderWidth: 2, borderColor: "#00C9DB",
+    alignItems: "center", justifyContent: "center",
+    marginRight: 8, backgroundColor: "#FFFFFF",
+  },
+  checkboxChecked: { backgroundColor: "#00C9DB" },
+  rememberText: { fontSize: 13, color: "#5A6B80", fontWeight: "600" },
+  link: { fontSize: 13, color: "#6B3FA0", fontWeight: "700" },
+
+  // Botón principal
+  primaryButton: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-  },
-  checkboxChecked: {
-    backgroundColor: "#2E7D32",
-  },
-  checkmark: {
-    color: "#FFF",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  rememberText: {
-    fontSize: 14,
-    color: "#555",
-  },
-  forgotText: {
-    fontSize: 14,
-    color: "#2E7D32",
-    fontWeight: "600",
-  },
-  loginButton: {
-    backgroundColor: "#FFD700",
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    backgroundColor: "#00C9DB",
+    borderRadius: 14,
+    height: 52,
+    shadowColor: "#00C9DB",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     elevation: 5,
   },
-  loginButtonText: {
-    color: "#1B5E20",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  registerContainer: {
+  primaryButtonText: { fontSize: 16, fontWeight: "800", color: "#0B1628", letterSpacing: 0.3 },
+
+  // Footer
+  footerRow: {
     flexDirection: "row",
     justifyContent: "center",
-    marginBottom: 24,
-  },
-  registerText: {
-    fontSize: 14,
-    color: "#666",
-  },
-  registerLink: {
-    fontSize: 14,
-    color: "#2E7D32",
-    fontWeight: "700",
-  },
-  demoContainer: {
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    padding: 12,
     alignItems: "center",
+    gap: 6,
+    marginTop: 18,
+    marginBottom: 20,
   },
+  footerText: { fontSize: 13, color: "#5A6B80" },
+  footerLink: { fontSize: 13, color: "#6B3FA0", fontWeight: "800" },
+
+  // Cuentas demo
+  demoBox: {
+    backgroundColor: "#F4F7FB",
+    borderWidth: 1,
+    borderColor: "#E4EAF3",
+    borderRadius: 14,
+    padding: 12,
+  },
+  demoHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
   demoTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#666",
-    marginBottom: 6,
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#5A6B80",
+    letterSpacing: 1,
   },
-  demoText: {
+  demoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 7,
+  },
+  demoRowBorder: { borderBottomWidth: 1, borderBottomColor: "#E9EEF6" },
+  demoDot: { width: 7, height: 7, borderRadius: 4, marginRight: 8 },
+  demoRole: { fontSize: 11, fontWeight: "800", color: "#0B1628", width: 70 },
+  demoEmail: { flex: 1, fontSize: 11, color: "#5A6B80" },
+  demoPass: {
     fontSize: 11,
-    color: "#888",
+    color: "#5A6B80",
+    backgroundColor: "#E9EEF6",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: "hidden",
+    marginLeft: 6,
   },
 });

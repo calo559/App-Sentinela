@@ -1,16 +1,30 @@
-import { View, Text, FlatList, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, Share } from 'react-native';
+import { notify } from '../utils/notify';
 import { useState, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import typography from '../theme/typography';
 import Card from '../components/Card';
 import Header from '../components/Header';
+import Calendar from '../components/Calendar';
+import { getActiveUser } from '../services/authService';
 
+// Fechas relativas a hoy para que siempre se vean en el año/mes actual
+const daysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const DAY0 = daysAgo(0);
+const DAY1 = daysAgo(1);
+const DAY2 = daysAgo(2);
+
+// course usa el mismo formato que el registro: curso + división (ej: "3°1")
 const attendanceHistory = [
   {
     id: '1',
     student: 'Juan Pérez',
-    course: '3° A',
-    date: '2024-01-15',
+    course: '3°1',
+    date: DAY0,
     time: '08:15',
     status: 'presente',
     observations: 'Llegó temprano'
@@ -18,8 +32,8 @@ const attendanceHistory = [
   {
     id: '2',
     student: 'María López',
-    course: '4° B',
-    date: '2024-01-15',
+    course: '3°1',
+    date: DAY0,
     time: '08:45',
     status: 'tarde',
     observations: 'Justificó llegada tarde'
@@ -27,8 +41,8 @@ const attendanceHistory = [
   {
     id: '3',
     student: 'Carlos Gómez',
-    course: '5° C',
-    date: '2024-01-15',
+    course: '3°1',
+    date: DAY0,
     time: '-',
     status: 'ausente',
     observations: 'Sin aviso'
@@ -36,38 +50,111 @@ const attendanceHistory = [
   {
     id: '4',
     student: 'Ana Martínez',
-    course: '3° A',
-    date: '2024-01-14',
+    course: '3°1',
+    date: DAY0,
     time: '08:10',
     status: 'presente',
     observations: '-'
   },
   {
     id: '5',
-    student: 'Lucas Rodríguez',
-    course: '4° B',
-    date: '2024-01-14',
-    time: '08:20',
+    student: 'Bruno Díaz',
+    course: '3°1',
+    date: DAY0,
+    time: '08:12',
     status: 'presente',
     observations: '-'
   },
   {
     id: '6',
-    student: 'Sofía Fernández',
-    course: '5° C',
-    date: '2024-01-14',
-    time: '08:50',
+    student: 'Camila Ruiz',
+    course: '3°1',
+    date: DAY0,
+    time: '08:52',
     status: 'tarde',
     observations: 'Problemas de transporte'
   },
   {
     id: '7',
-    student: 'Tomás Díaz',
-    course: '3° A',
-    date: '2024-01-13',
+    student: 'Diego Sosa',
+    course: '3°1',
+    date: DAY0,
     time: '-',
     status: 'ausente',
     observations: 'Presentó justificación médica'
+  },
+  {
+    id: '8',
+    student: 'Emilia Vega',
+    course: '3°1',
+    date: DAY0,
+    time: '08:08',
+    status: 'presente',
+    observations: '-'
+  },
+  {
+    id: '9',
+    student: 'Lucas Rodríguez',
+    course: '3°1',
+    date: DAY1,
+    time: '08:20',
+    status: 'presente',
+    observations: '-'
+  },
+  {
+    id: '10',
+    student: 'María López',
+    course: '3°1',
+    date: DAY1,
+    time: '08:14',
+    status: 'presente',
+    observations: '-'
+  },
+  {
+    id: '11',
+    student: 'Sofía Fernández',
+    course: '3°1',
+    date: DAY1,
+    time: '08:50',
+    status: 'tarde',
+    observations: 'Problemas de transporte'
+  },
+  {
+    id: '12',
+    student: 'Tomás Díaz',
+    course: '3°1',
+    date: DAY2,
+    time: '-',
+    status: 'ausente',
+    observations: 'Presentó justificación médica'
+  },
+  {
+    id: '13',
+    student: 'Ana Martínez',
+    course: '3°1',
+    date: DAY2,
+    time: '08:10',
+    status: 'presente',
+    observations: '-'
+  },
+  // Otros cursos: NO se muestran al alumno de 3°1
+  {
+    id: '14',
+    student: 'Pedro Gómez',
+    course: '4°2',
+    date: DAY0,
+    time: '08:15',
+    status: 'presente',
+    observations: '-'
+  },
+  {
+    id: '15',
+    student: 'Rocío Mena',
+    course: '5°3',
+    date: DAY0,
+    time: '-',
+    status: 'ausente',
+    observations: 'Sin aviso'
   },
 ];
 
@@ -75,7 +162,12 @@ export default function EventsScreen({ navigation }) {
   const { colors } = useTheme();
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [letterFilter, setLetterFilter] = useState('Todas');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // arranca en el día con registros más recientes (si no, hoy)
+    const dates = attendanceHistory.map((i) => i.date).sort();
+    return dates[dates.length - 1] || new Date().toISOString().split('T')[0];
+  });
 
   const statusConfig = {
     presente: {
@@ -98,19 +190,68 @@ export default function EventsScreen({ navigation }) {
     }
   };
 
-  const filteredHistory = attendanceHistory.filter(item => {
+  const activeUser = getActiveUser();
+  // El alumno/preceptor ve solo SU curso; el docente (sin curso asignado) ve todos
+  const myCourse =
+    activeUser?.curso && activeUser?.division ? `${activeUser.curso}${activeUser.division}` : null;
+  const courseRecords = myCourse
+    ? attendanceHistory.filter((item) => item.course === myCourse)
+    : attendanceHistory;
+
+  // Inicial seguro aunque el nombre venga vacío
+  const initial = (name) => {
+    const first = String(name ?? '').trim().charAt(0);
+    return first ? first.toUpperCase() : '?';
+  };
+
+  const filteredHistory = courseRecords.filter(item => {
     const matchesSearch = item.student.toLowerCase().includes(searchText.toLowerCase()) ||
       item.course.toLowerCase().includes(searchText.toLowerCase());
-    const matchesStatus = filterStatus === 'todos' || item.status === filterStatus;
+    // "Presentes" incluye a los que llegaron tarde (asistieron igual)
+    const matchesStatus =
+      filterStatus === 'todos' ||
+      (filterStatus === 'presentes'
+        ? item.status === 'presente' || item.status === 'tarde'
+        : item.status === filterStatus);
     const matchesDate = item.date === selectedDate;
+    const matchesLetter = letterFilter === 'Todas' || initial(item.student) === letterFilter;
 
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesDate && matchesLetter;
   });
 
-  const uniqueDates = [...new Set(attendanceHistory.map(item => item.date))];
+  // Agrupado alfabéticamente por inicial del alumno
+  const grouped = (() => {
+    const sorted = [...filteredHistory].sort((a, b) => a.student.localeCompare(b.student, 'es'));
+    const out = [];
+    let lastLetter = null;
+    sorted.forEach((item) => {
+      const letter = initial(item.student);
+      if (letter !== lastLetter) {
+        out.push({ type: 'header', letter, id: `header-${letter}` });
+        lastLetter = letter;
+      }
+      out.push({ type: 'item', id: item.id, item });
+    });
+    return out;
+  })();
+
+  // Letras disponibles para el filtro (de los registros del curso, del día)
+  const availableLetters = [...new Set(
+    courseRecords
+      .filter((i) => i.date === selectedDate)
+      .map((i) => initial(i.student))
+  )].sort();
+
+  const getStatusConfig = (status) =>
+    statusConfig[status] || {
+      label: status ? String(status) : '—',
+      color: colors.textSecondary,
+      icon: '•',
+      bgOpacity: '20',
+    };
 
   const getStatusStyle = (status) => {
-    const config = statusConfig[status];
+    const config = getStatusConfig(status);
     return {
       backgroundColor: config.color + config.bgOpacity,
       borderLeftColor: config.color,
@@ -118,12 +259,15 @@ export default function EventsScreen({ navigation }) {
   };
 
   const formatDate = (dateString) => {
+    // Parseo manual: "YYYY-MM-DD" con new Date() se interpreta en UTC y puede mostrar un día menos
+    const [y, m, d] = String(dateString).split('-').map(Number);
+    if (!y || !m || !d) return dateString;
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('es-AR', options);
+    return new Date(y, m - 1, d).toLocaleDateString('es-AR', options);
   };
 
   const getStatsForDate = (date) => {
-    const dayRecords = attendanceHistory.filter(item => item.date === date);
+    const dayRecords = courseRecords.filter(item => item.date === date);
     const presentes = dayRecords.filter(item => item.status === 'presente').length;
     const tarde = dayRecords.filter(item => item.status === 'tarde').length;
     const ausentes = dayRecords.filter(item => item.status === 'ausente').length;
@@ -163,7 +307,7 @@ export default function EventsScreen({ navigation }) {
       color: colors.textSecondary,
     },
     dateButtonTextActive: {
-      color: colors.white,
+      color: colors.onPrimary || colors.white,
       fontWeight: '600',
     },
     summaryCard: {
@@ -211,7 +355,7 @@ export default function EventsScreen({ navigation }) {
       marginBottom: 12,
     },
     searchInput: {
-      backgroundColor: colors.white,
+      backgroundColor: colors.surfaceVariant,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 10,
@@ -238,8 +382,48 @@ export default function EventsScreen({ navigation }) {
       color: colors.textSecondary,
     },
     filterChipTextActive: {
-      color: colors.white,
+      color: colors.onPrimary || colors.white,
       fontWeight: '600',
+    },
+    letterFilters: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 10,
+    },
+    letterChip: {
+      minWidth: 30,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 8,
+      alignItems: 'center',
+      backgroundColor: colors.surfaceVariant,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    letterChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    letterChipText: {
+      ...typography.caption,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    letterChipTextActive: {
+      color: colors.onPrimary || colors.white,
+    },
+    groupHeader: {
+      paddingHorizontal: 20,
+      paddingTop: 14,
+      paddingBottom: 4,
+    },
+    groupHeaderText: {
+      ...typography.h3,
+      fontSize: 16,
+      color: colors.primary,
+      fontWeight: '800',
     },
     list: {
       paddingHorizontal: 16,
@@ -327,34 +511,22 @@ export default function EventsScreen({ navigation }) {
     },
     reportButtonText: {
       ...typography.button,
-      color: colors.white,
+      color: colors.onPrimary || colors.white,
       fontWeight: 'bold',
     },
   }), [colors]);
 
-  return (
-    <View style={s.container}>
-      <Header
-        title="Historial de Asistencia"
-        subtitle="Registro completo de asistencia por día"
+  const renderListHeader = () => (
+    <>
+      <Calendar
+        records={courseRecords}
+        selectedDate={selectedDate}
+        onSelect={(date) => {
+          setSelectedDate(date);
+          // Si la nueva fecha no tiene registros de la letra elegida, limpiamos el filtro
+          setLetterFilter('Todas');
+        }}
       />
-
-      <View style={s.dateSelector}>
-        <Text style={s.dateLabel}>Fecha:</Text>
-        <View style={s.dateButtons}>
-          {uniqueDates.map(date => (
-            <TouchableOpacity
-              key={date}
-              style={[s.dateButton, selectedDate === date && s.dateButtonActive]}
-              onPress={() => setSelectedDate(date)}
-            >
-              <Text style={[s.dateButtonText, selectedDate === date && s.dateButtonTextActive]}>
-                {formatDate(date).split(',')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
 
       <Card style={s.summaryCard}>
         <Text style={s.summaryTitle}>Resumen del {formatDate(selectedDate)}</Text>
@@ -402,11 +574,11 @@ export default function EventsScreen({ navigation }) {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.filterChip, filterStatus === 'presente' && s.filterChipActive]}
-            onPress={() => setFilterStatus('presente')}
+            style={[s.filterChip, filterStatus === 'presentes' && s.filterChipActive]}
+            onPress={() => setFilterStatus('presentes')}
           >
-            <Text style={[s.filterChipText, filterStatus === 'presente' && s.filterChipTextActive]}>
-              ✓ Presentes
+            <Text style={[s.filterChipText, filterStatus === 'presentes' && s.filterChipTextActive]}>
+              ✓ Presentes (con tarde)
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -426,12 +598,45 @@ export default function EventsScreen({ navigation }) {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Filtro alfabético por inicial */}
+        <View style={s.letterFilters}>
+          <TouchableOpacity
+            style={[s.letterChip, letterFilter === 'Todas' && s.letterChipActive]}
+            onPress={() => setLetterFilter('Todas')}
+          >
+            <Text style={[s.letterChipText, letterFilter === 'Todas' && s.letterChipTextActive]}>
+              Todas
+            </Text>
+          </TouchableOpacity>
+          {availableLetters.map((letter) => (
+            <TouchableOpacity
+              key={letter}
+              style={[s.letterChip, letterFilter === letter && s.letterChipActive]}
+              onPress={() => setLetterFilter(letter === letterFilter ? 'Todas' : letter)}
+            >
+              <Text style={[s.letterChipText, letterFilter === letter && s.letterChipTextActive]}>
+                {letter}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
+    </>
+  );
+
+  return (
+    <View style={s.container}>
+      <Header
+        title="Historial de Asistencia"
+        subtitle="Registro completo de asistencia por día"
+      />
 
       <FlatList
-        data={filteredHistory}
-        keyExtractor={(item) => item.id}
+        data={grouped}
+        keyExtractor={(row) => row.id}
         contentContainerStyle={s.list}
+        ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
           <View style={s.emptyContainer}>
             <Text style={s.emptyIcon}>📋</Text>
@@ -439,11 +644,22 @@ export default function EventsScreen({ navigation }) {
             <Text style={s.emptySubtext}>Prueba con otros filtros o fecha</Text>
           </View>
         }
-        renderItem={({ item }) => {
-          const status = statusConfig[item.status];
+        renderItem={({ item: row }) => {
+          if (row.type === 'header') {
+            return (
+              <View style={s.groupHeader}>
+                <Text style={s.groupHeaderText}>{row.letter}</Text>
+              </View>
+            );
+          }
+          const item = row.item;
+          const status = getStatusConfig(item.status);
           return (
             <TouchableOpacity
-              onPress={() => navigation?.navigate('StudentDetail', { student: item })}
+              onPress={() => notify(
+                item.student,
+                `${item.course} · ${status.label}\n🕐 ${item.time} hs\n📝 ${item.observations}`
+              )}
             >
               <Card style={[s.eventCard, getStatusStyle(item.status)]}>
                 <View style={s.eventRow}>
@@ -473,8 +689,15 @@ export default function EventsScreen({ navigation }) {
 
       <TouchableOpacity
         style={s.reportButton}
-        onPress={() => {
-          Alert.alert('Generar reporte', `Reporte de asistencia del ${formatDate(selectedDate)} generado`);
+        onPress={async () => {
+          const lines = filteredHistory.map((r) => `• ${r.student} (${r.course}): ${r.status} ${r.time}`).join('\n');
+          try {
+            await Share.share({
+              message: `Reporte de asistencia del ${formatDate(selectedDate)}\nPresentes: ${stats.presentes} · Tarde: ${stats.tarde} · Ausentes: ${stats.ausentes} · Total: ${stats.total}\n\n${lines || 'Sin registros'}`,
+            });
+          } catch (error) {
+            notify('Error', 'No se pudo compartir el reporte');
+          }
         }}
       >
         <Text style={s.reportButtonText}>📊 Generar reporte del día</Text>
