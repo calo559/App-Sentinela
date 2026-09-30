@@ -16,6 +16,7 @@ import {
   ESPECIALIDADES,
   especialidadDe,
   materiasDe,
+  detalleMateria,
   etiquetaCurso,
   notasDe,
   informeDe,
@@ -97,6 +98,10 @@ export default function BoletinScreen() {
   const espKey = especialidadDe(curso, division);
   const espLabel = espKey ? ESPECIALIDADES[espKey].label : null;
   const materias = materiasDe(curso, division);
+  // Detalle (docente y horario) por materia — solo cursos con horario especial
+  const detalles = Object.fromEntries(
+    materias.map((m) => [m, detalleMateria(curso, division, m)])
+  );
 
   const cursoDiv = etiquetaCurso(curso, division);
   const semilla = `${active.email || active.nombre || 'invitado'}|${cursoDiv}`;
@@ -345,6 +350,14 @@ export default function BoletinScreen() {
                 <Text style={[st.subjectName, { color: colors.text }]} numberOfLines={1}>
                   {row.materia}
                 </Text>
+                {detalles[row.materia]?.docente ? (
+                  <Text
+                    style={[st.subjectMeta, { color: colors.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {`${detalles[row.materia].docente} · ${detalles[row.materia].horario}`}
+                  </Text>
+                ) : null}
                 <View style={[st.barBg, { backgroundColor: colors.surfaceVariant }]}>
                   <View
                     style={[
@@ -388,6 +401,7 @@ export default function BoletinScreen() {
 
 const st = StyleSheet.create({
   container: { flex: 1 },
+  subjectMeta: { fontSize: 11, marginTop: 2, marginBottom: 4 },
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },
 
   card: {

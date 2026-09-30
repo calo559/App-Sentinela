@@ -41,26 +41,122 @@ export const HORARIO_CURSOS = {
 // ⚠️ Horarios ESPECIALES por curso y día de la semana: pisan el horario general
 // SOLO para los días listados (los demás días del curso sigue el de arriba /
 // la regla por defecto).
-//   estructura: { 'curso': { [día]: [ {inicio, fin, materia, nombre} ] } }
+//   estructura: { 'curso': { [día]: [ {inicio, fin, materia, nombre, docente} ] } }
 //   día: 0=domingo, 1=lunes, 2=martes … 6=sábado
 //   La ausencia de recreo entre bloques es intencional (ej.: "de corrido").
+//   Estos bloques también alimentan la malla del Boletín de ese curso.
 export const HORARIO_DIAS_CURSOS = {
+  // 7°2 — turno de tarde (Informática): semana completa
   '7°2': {
-    // Los MARTES: turno de tarde, 1ª hora de corrido sin recreo
+    // LUNES: de corrido sin recreo
+    1: [
+      {
+        id: 'L1',
+        inicio: '13:30',
+        fin: '17:30',
+        materia: 'PP',
+        nombre: 'Prácticas Profesionalizantes',
+        docente: 'Carlos Acuña',
+      },
+    ],
+    // MARTES
     2: [
       {
-        id: 'P1',
+        id: 'M1',
         inicio: '14:00',
         fin: '18:00',
         materia: 'Pdisc',
         nombre: 'Proyecto, Implementación de Sistemas Computacionales',
+        docente: 'Pablo Pereyra',
       },
       {
-        id: 'P2',
+        id: 'M2',
         inicio: '18:30',
         fin: '20:30',
         materia: 'PP',
         nombre: 'Prácticas Profesionalizantes',
+        docente: 'Carlos Acuña',
+      },
+    ],
+    // MIÉRCOLES
+    3: [
+      {
+        id: 'X1',
+        inicio: '15:20',
+        fin: '17:20',
+        materia: 'Evaluación de Proyecto',
+        nombre: 'Evaluación de Proyecto',
+        docente: 'Carla Angela Maciel',
+      },
+      {
+        id: 'X2',
+        inicio: '17:30',
+        fin: '19:20',
+        materia: 'Redes',
+        nombre: 'Instalación, Mantenimiento y Reparación de Redes',
+        docente: 'Jorge Izaguirre',
+      },
+      {
+        id: 'X3',
+        inicio: '19:40',
+        fin: '21:30',
+        materia: 'Redes',
+        nombre: 'Instalación, Mantenimiento y Reparación de Redes',
+        docente: 'Jorge Izaguirre',
+      },
+    ],
+    // JUEVES
+    4: [
+      {
+        id: 'J1',
+        inicio: '13:00',
+        fin: '15:00',
+        materia: 'Emprendimiento Productivo',
+        nombre: 'Emprendimiento Productivo',
+        docente: 'Fátima Anglada',
+      },
+      {
+        id: 'J2',
+        inicio: '15:20',
+        fin: '17:20',
+        materia: 'Modelos y Sistemas',
+        nombre: 'Modelos y Sistemas',
+        docente: 'Gustavo Oller',
+      },
+      {
+        id: 'J3',
+        inicio: '18:30',
+        fin: '19:20',
+        materia: 'Base de Datos',
+        nombre: 'Base de Datos',
+        docente: 'Carlos Acuña',
+      },
+      {
+        id: 'J4',
+        inicio: '19:40',
+        fin: '21:30',
+        materia: 'Base de Datos',
+        nombre: 'Base de Datos',
+        docente: 'Carlos Acuña',
+      },
+    ],
+    // VIERNES
+    5: [
+      {
+        id: 'V1',
+        inicio: '17:30',
+        fin: '19:20',
+        materia: 'IMCR',
+        nombre: 'Instalación, Mantenimiento y Reparación de Sistemas Computacionales',
+        docente: 'Luis Alberto Salatino',
+      },
+      {
+        id: 'V2',
+        inicio: '19:40',
+        fin: '21:30',
+        materia: 'IMCR',
+        nombre: 'Instalación, Mantenimiento y Reparación de Sistemas Computacionales',
+        docente: 'Luis Alberto Salatino',
       },
     ],
   },

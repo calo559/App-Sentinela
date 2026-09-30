@@ -8,6 +8,20 @@
 //   6° ........ los de Electromecánica se juntan en 6°1; Informática sigue en 6°2
 //   7° ........ conservan la misma división (7°1 Electromecánica · 7°2 Informática)
 
+import { HORARIO_DIAS_CURSOS } from '../qr/horarios';
+
+// Días cortos para mostrar horarios en el boletín (0=Dom … 6=Sáb)
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+/** Bloques con horario especial del curso (vacío si el curso no tiene). */
+function bloquesEspeciales(curso, division) {
+  const porDia = HORARIO_DIAS_CURSOS[etiquetaCurso(curso, division)];
+  if (!porDia) return [];
+  return Object.entries(porDia).flatMap(([dia, bloques]) =>
+    bloques.map((b) => ({ dia: Number(dia), ...b }))
+  );
+}
+
 const COMUN = [
   'Lengua y Literatura',
   'Matemática',
@@ -81,8 +95,24 @@ export function especialidadDe(curso, division) {
   return null;
 }
 
-/** Materias que se cursan en ese curso/división. */
+/**
+ * Materias que se cursan en ese curso/división.
+ * Si el curso tiene horario especial (ej.: 7°2, turno de tarde), la malla es
+ * la que surge de sus bloques de HORARIO_DIAS_CURSOS (fuente única de datos).
+ */
 export function materiasDe(curso, division) {
+  const especiales = bloquesEspeciales(curso, division);
+  if (especiales.length) {
+    const vistas = new Set();
+    const lista = [];
+    for (const b of especiales) {
+      if (!vistas.has(b.materia)) {
+        vistas.add(b.materia);
+        lista.push(b.materia);
+      }
+    }
+    return lista;
+  }
   const anio = yearOf(curso);
   const esp = especialidadDe(curso, division);
   let lista;
@@ -94,6 +124,25 @@ export function materiasDe(curso, division) {
   // En 7° se agrega el Proyecto Final
   if (anio === 7) lista = [...lista, 'Proyecto Final'];
   return lista;
+}
+
+/**
+ * Detalle de una materia para el boletín: docente y horario.
+ * Solo tiene datos en cursos con horario especial (ej.: 7°2); si no, null.
+ * Ej.: { docente: 'Carlos Acuña', horario: 'Lun 13:30–17:30 · Mar 18:30–20:30' }
+ */
+export function detalleMateria(curso, division, materia) {
+  const bloques = bloquesEspeciales(curso, division).filter(
+    (b) => b.materia === materia
+  );
+  if (!bloques.length) return null;
+  const docentes = [...new Set(bloques.map((b) => b.docente).filter(Boolean))];
+  return {
+    docente: docentes.join(' / '),
+    horario: bloques
+      .map((b) => `${DIAS_CORTOS[b.dia]} ${b.inicio}–${b.fin}`)
+      .join(' · '),
+  };
 }
 
 /** "3°1" */
