@@ -7,6 +7,8 @@ import { notify } from '../utils/notify';
 import { ROLE_INFO } from '../utils/roles';
 import { getActiveUser } from '../services/authService';
 import { getToday } from '../services/attendanceService';
+import { proximaClase, periodosDeCurso, esDiaClase, HORARIO_DIAS_CURSOS } from '../qr/horarios';
+import { detalleMateria } from '../utils/malla';
 import typography from '../theme/typography';
 import Card from '../components/Card';
 import Header from '../components/Header';
@@ -18,17 +20,6 @@ const recentAttendance = [
   { id: '4', name: 'Ana Martínez', course: '3°1', status: 'presente', time: '08:10' },
   { id: '5', name: 'Pedro Gómez', course: '4°2', status: 'presente', time: '08:20' },
   { id: '6', name: 'Rocío Mena', course: '5°3', status: 'ausente', time: '-' },
-];
-
-// Próxima clase (demo) y horario completo del día
-const PROXIMA_CLASE = { hora: '13:30', materia: 'Sistemas', aula: '204', profesor: 'Prof. Martínez' };
-
-const HORARIO_HOY = [
-  '08:00 · Lengua y Literatura · Aula 102',
-  '08:50 · Matemática · Aula 102',
-  '09:40 · Programación · Laboratorio 1',
-  '10:45 · Inglés · Aula 104',
-  '13:30 · Sistemas · Aula 204 (Prof. Martínez)',
 ];
 
 // Avisos recientes (color del punto = clave de la paleta del tema)
@@ -47,18 +38,27 @@ const ACCESOS = [
   { id: 'a4', icon: 'bell-outline', label: 'Avisos', to: 'avisos' },
 ];
 
-// "En 2 h 20 min" hasta la próxima clase (13:30 de hoy, o de mañana si ya pasó)
-function cuentaRegresiva() {
-  const [h, m] = PROXIMA_CLASE.hora.split(':').map(Number);
-  const now = new Date();
-  const target = new Date(now);
+const capitalizar = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : '');
+
+// "En 2 h 20 min" / "Mañana" / "En 2 días" hasta la próxima clase REAL del
+// curso (fecha y hora salen del horario, no de datos de ejemplo).
+function cuentaRegresiva(fecha, hora) {
+  if (!fecha || !hora) return '';
+  const [h, m] = hora.split(':').map(Number);
+  const target = new Date(fecha);
   target.setHours(h, m, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1);
+  const now = new Date();
+  const dias = Math.round(
+    (new Date(target.getFullYear(), target.getMonth(), target.getDate()) -
+      new Date(now.getFullYear(), now.getMonth(), now.getDate())) /
+      86400000
+  );
+  if (dias >= 2) return `En ${dias} días`;
+  if (dias === 1) return 'Mañana';
   const totalMin = Math.max(1, Math.round((target - now) / 60000));
   const horas = Math.floor(totalMin / 60);
   const mins = totalMin % 60;
   if (horas === 0) return `En ${mins} min`;
-  if (horas >= 12) return 'Mañana';
   return `En ${horas} h ${mins} min`;
 }
 
@@ -81,6 +81,54 @@ export default function HomeScreen({ navigation }) {
     ? recentAttendance.filter((r) => r.course === myCourse)
     : recentAttendance;
 
+  // Próxima clase REAL del curso del usuario (misma fuente que valida el QR):
+  // materia como en el Boletín, docente y horario del bloque.
+  const prox = myCourse ? proximaClase(myCourse, new Date()) : null;
+  const proxPeriodo = prox?.periodo ?? null;
+  const proxMateria = proxPeriodo ? proxPeriodo.materia || proxPeriodo.nombre : null;
+  const proxDocente = proxPeriodo
+    ? proxPeriodo.docente ||
+      (proxMateria
+        ? detalleMateria(activeUser?.curso, activeUser?.division, proxMateria)?.docente
+        : null)
+    : null;
+  const proximoDia = !prox
+    ? null
+    : prox.cuando === 'hoy'
+      ? 'Hoy'
+      : prox.cuando === 'manana'
+        ? 'Mañana'
+        : capitalizar(prox.fecha?.toLocaleDateString('es-AR', { weekday: 'long' }) || '');
+
+  const metaProxima = !myCourse
+    ? 'Cargá tu curso y división en tu perfil'
+    : prox
+      ? [proximoDia, `${proxPeriodo.inicio}–${proxPeriodo.fin}`, proxDocente]
+          .filter(Boolean)
+          .join(' · ')
+      : 'Sin clases programadas';
+
+  // Horario de HOY del curso (diálogo "Ver horario →")
+  const horarioHoy = useMemo(() => {
+    const d = new Date();
+    if (!myCourse) return ['Sin curso asignado en tu perfil'];
+    if (!esDiaClase(d)) return ['Hoy no hay clases'];
+    const especial = !!HORARIO_DIAS_CURSOS[myCourse]?.[d.getDay()];
+    const ps = periodosDeCurso(myCourse, d);
+    if (!ps.length) return ['Tu curso no tiene clases hoy'];
+    const lineas = [];
+    for (const p of ps) {
+      lineas.push(
+        `${p.inicio}–${p.fin} · ${p.materia || p.nombre}${p.docente ? ` · ${p.docente}` : ''}`
+      );
+      // Recreo del horario general, solo si cursa las dos horas
+      if (!especial && p.id === 'P1' && ps.some((x) => x.id === 'P2')) {
+        lineas.push('09:20–09:40 · Recreo');
+      }
+    }
+    return lineas;
+  }, [myCourse]);
+
   const attendanceStats = [
     { id: '1', label: 'Presentes', value: '142', color: colors.success, icon: 'account-check-outline' },
     { id: '2', label: 'Ausentes', value: '18', color: colors.error, icon: 'account-remove-outline' },
@@ -101,7 +149,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleVerHorario = () => {
-    notify('Horario de hoy', HORARIO_HOY.join('\n'), [{ text: 'Cerrar' }]);
+    notify('Horario de hoy', horarioHoy.join('\n'), [{ text: 'Cerrar' }]);
   };
 
   const getStatusColor = (status) => {
@@ -428,7 +476,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* Próxima clase */}
+        {/* Próxima clase (real, según el horario del curso) */}
         <Card>
           <View style={s.cardHeadRow}>
             <View style={[s.iconBadge, { backgroundColor: colors.primary + '1F' }]}>
@@ -436,14 +484,16 @@ export default function HomeScreen({ navigation }) {
             </View>
             <View style={s.cardHeadInfo}>
               <Text style={s.eyebrow}>PRÓXIMA CLASE</Text>
-              <Text style={s.cardTitleBig}>{PROXIMA_CLASE.materia}</Text>
-              <Text style={s.cardMeta}>
-                {PROXIMA_CLASE.hora} · Aula {PROXIMA_CLASE.aula} · {PROXIMA_CLASE.profesor}
-              </Text>
+              <Text style={s.cardTitleBig}>{proxMateria || 'Sin clases'}</Text>
+              <Text style={s.cardMeta}>{metaProxima}</Text>
             </View>
-            <View style={[s.pill, { backgroundColor: colors.primary + '1F' }]}>
-              <Text style={[s.pillText, { color: colors.primary }]}>{cuentaRegresiva()}</Text>
-            </View>
+            {prox && (
+              <View style={[s.pill, { backgroundColor: colors.primary + '1F' }]}>
+                <Text style={[s.pillText, { color: colors.primary }]}>
+                  {cuentaRegresiva(prox.fecha, proxPeriodo.inicio)}
+                </Text>
+              </View>
+            )}
           </View>
           <TouchableOpacity style={s.linkRow} onPress={handleVerHorario}>
             <Text style={s.linkText}>Ver horario →</Text>

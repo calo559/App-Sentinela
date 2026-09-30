@@ -240,14 +240,14 @@ export function proximaClase(curso, date = new Date()) {
   if (esDiaClase(date)) {
     const m = minutosDeFecha(date);
     const hoy = periodosDeCurso(curso, date).find((p) => m < aMinutos(p.inicio));
-    if (hoy) return { periodo: hoy, cuando: 'hoy' };
+    if (hoy) return { periodo: hoy, cuando: 'hoy', fecha: date };
   }
   // Si hoy no queda nada (o no es día de clase): buscamos en los próximos días.
   for (let i = 1; i <= 7; i++) {
     const d = new Date(date.getTime() + i * 86400000);
     if (!esDiaClase(d)) continue;
     const ps = periodosDeCurso(curso, d);
-    if (ps.length) return { periodo: ps[0], cuando: i === 1 ? 'manana' : 'proxima' };
+    if (ps.length) return { periodo: ps[0], cuando: i === 1 ? 'manana' : 'proxima', fecha: d };
   }
   return null;
 }
