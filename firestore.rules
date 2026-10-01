@@ -1,0 +1,388 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function perfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function rol() {
+      return autenticado() && perfil().data.activo == true ? perfil().data.rol : 'ninguno';
+    }
+
+    function esAdmin() { return rol() == 'administrador'; }
+    function esDirectivo() { return rol() == 'directivo'; }
+    function esPreceptor() { return rol() == 'preceptor'; }
+    function esProfesor() { return rol() == 'profesor'; }
+    function esAlumno() { return rol() == 'alumno'; }
+    function esDocente() { return esPreceptor() || esProfesor(); }
+    function esGestion() { return esAdmin() || esDirectivo(); }
+    function esStaff() { return esGestion() || esDocente(); }
+
+    function miAlumno() {
+      return get(/databases/$(database)/documents/alumnos/$(perfil().data.alumnoId));
+    }
+
+    function esMiAlumno(alumnoId) {
+      return esAlumno() && alumnoId != null && alumnoId == perfil().data.alumnoId;
+    }
+
+    function esAlumnoDeCurso(cursoId) {
+      return esAlumno() && cursoId != null && miAlumno().data.cursoId == cursoId;
+    }
+
+    function datosCurso(cursoId) {
+      return get(/databases/$(database)/documents/cursos/$(cursoId)).data;
+    }
+
+    function datosMateria(materiaId) {
+      return get(/databases/$(database)/documents/materias/$(materiaId)).data;
+    }
+
+    function datosAlumno(alumnoId) {
+      return get(/databases/$(database)/documents/alumnos/$(alumnoId)).data;
+    }
+
+    function datosHorario(horarioId) {
+      return get(/databases/$(database)/documents/horarios/$(horarioId)).data;
+    }
+
+    function datosSesion(sesionId) {
+      return get(/databases/$(database)/documents/sesionesQR/$(sesionId)).data;
+    }
+
+    function esPreceptorDelCurso(cursoId) {
+      return esPreceptor() && request.auth.uid in datosCurso(cursoId).preceptorIds;
+    }
+
+    function esDocenteDelCurso(cursoId) {
+      return esProfesor() && request.auth.uid in datosCurso(cursoId).docenteIds;
+    }
+
+    function esDocenteDeMateria(materiaId) {
+      return esProfesor() && materiaId != null && datosMateria(materiaId).docenteId == request.auth.uid;
+    }
+
+    function esMateriaDelCurso(materiaId, cursoId) {
+      return esDocenteDeMateria(materiaId) && datosMateria(materiaId).cursoId == cursoId;
+    }
+
+    function esAlumnoDeLaMateria(materiaId) {
+      return esAlumno() && datosMateria(materiaId).cursoId == miAlumno().data.cursoId;
+    }
+
+    function puedeVerCurso(cursoId) {
+      return esStaff() || esAlumnoDeCurso(cursoId);
+    }
+
+    function puedeOperarCurso(cursoId) {
+      return esGestion() || esPreceptorDelCurso(cursoId) || esDocenteDelCurso(cursoId);
+    }
+
+    function puedeOperarMateria(materiaId) {
+      return esGestion() || esDocenteDeMateria(materiaId);
+    }
+
+    function camposAsistencia() {
+      return ['estado', 'observaciones', 'actualizadoEn'];
+    }
+
+    // Esquema real que escribe attendance.js al crear una asistencia por QR.
+    function camposAsistenciaCreacion() {
+      return ['alumnoId', 'cursoId', 'materiaId', 'horarioId', 'fecha', 'fechaKey', 'hora',
+              'estado', 'observaciones', 'registradoPor', 'metodoRegistro', 'sesionQRId',
+              'actualizadoEn', 'creadoEn'];
+    }
+
+    // Unico allowlist de un reescaneo del alumno: NO incluye creadoEn, identidad,
+    // curso/materia/horario, fecha, metodoRegistro ni sesionQRId (inmutables).
+    function camposAsistenciaQrUpdate() {
+      return ['hora', 'estado', 'actualizadoEn'];
+    }
+
+    // Campos permitidos en un perfil de usuario. Deben coincidir con el documento
+    // que escribe App-Sentinela (src/services/firestore/users.js) y con el alta
+    // publica de la web.
+    function camposPerfil() {
+      return ['uid', 'nombre', 'apellido', 'email', 'dni', 'rol', 'telefono',
+              'activo', 'alumnoId', 'dniVinculado', 'fechaCreacion', 'updatedAt'];
+    }
+
+    // Unico allowlist de UPDATE de una sesion QR (DECISIONES 1 y 3).
+    // Se puede tocar SOLO: codigo (rotacion), activo, horaFin, cerradoEn y
+    // actualizadoEn. Quedan inmutables: cursoId, materiaId, creadoPor, fecha,
+    // fechaKey, horaInicio y ubicacion.
+    function camposSesionQrUpdate() {
+      return ['codigo', 'activo', 'horaFin', 'cerradoEn', 'actualizadoEn'];
+    }
+
+    // En las ramas de auto-registro la condicion propia va PRIMERA a proposito:
+    // esAdmin() hace get() sobre el perfil del solicitante, que todavia no existe
+    // durante el alta. Si se evaluara primero, el error de get() denies el request.
+    match /usuarios/{usuarioId} {
+      allow read: if (autenticado() && request.auth.uid == usuarioId) || esAdmin();
+
+      // Auto-registro publico: SOLO alumnos. Los roles profesor/preceptor/
+      // directivo/administrador NO pueden auto-asignarse; los crea un admin.
+      //
+      // DISEÑO A: el alta NUNCA vincula. alumnoId y dniVinculado tienen que
+      // venir null o ausentes; si vinieran informedos, el alumno se adjudicaria
+      // solo una ficha (y con ella acceso a ese alumno entero). La vinculacion
+      // real la hace el administrador despues, escribiendo los dos lados.
+      allow create: if (autenticado()
+                        && request.auth.uid == usuarioId
+                        && request.resource.data.uid == request.auth.uid
+                        && request.resource.data.rol == 'alumno'
+                        && request.resource.data.activo == true
+                        && (!('alumnoId' in request.resource.data)
+                            || request.resource.data.alumnoId == null)
+                        && (!('dniVinculado' in request.resource.data)
+                            || request.resource.data.dniVinculado == null)
+                        && request.resource.data.keys().hasOnly(camposPerfil()))
+                    || esAdmin();
+
+      allow delete: if esAdmin();
+
+      // Auto-update del propio perfil: SOLO datos de contacto y nombre.
+      //
+      // DISEÑO A: no existe ninguna rama de auto-reclamacion (self-claim). El
+      // alumno no puede escribir alumnoId, dniVinculado, rol, activo, dni ni
+      // ningun campo administrativo, porque quedan todos fuera del allowlist.
+      // Tampoco puede tocar alumnos/{alumnoId}.usuarioId: esa coleccion exige
+      // esAdmin() para modificar ese campo (ver match /alumnos).
+      allow update: if (autenticado()
+                        && request.auth.uid == usuarioId
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['telefono', 'nombre', 'apellido', 'updatedAt']))
+                    || esAdmin();
+    }
+
+    match /alumnos/{alumnoId} {
+      allow read: if esGestion()
+        || esPreceptorDelCurso(resource.data.cursoId)
+        || esDocenteDelCurso(resource.data.cursoId)
+        || esMiAlumno(alumnoId);
+      // La ficha de alumno y su curso los administra la institucion: el alumno
+      // NO puede crear su propia ficha ni elegir un cursoId arbitrario. El alta
+      // publica solo crea el documento de usuarios (rol alumno, sin vinculacion).
+      //
+      // DISEÑO A: `usuarioId` es la referencia inversa de la vinculacion y solo
+      // el administrador puede crearla o modificarla. Ni el propio alumno ni el
+      // directivo pueden adjudicar una cuenta.
+      allow create: if esAdmin()
+        || (esDirectivo()
+            && (!('usuarioId' in request.resource.data)
+                || request.resource.data.usuarioId == null));
+      allow delete: if esAdmin();
+      // El propio alumno solo puede editar sus datos de contacto. cursoId,
+      // activo, legajo, usuarioId y cualquier campo administrativo quedan
+      // fuera del allowlist (los gestiona admin/directivo).
+      allow update: if esAdmin()
+        || (esDirectivo()
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['usuarioId']))
+        || (esMiAlumno(alumnoId)
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['usuarioId'])
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['nombre', 'apellido', 'telefono', 'email', 'actualizadoEn']));
+    }
+
+    match /cursos/{cursoId} {
+      allow read: if puedeVerCurso(cursoId);
+      allow create, delete: if esAdmin();
+      allow update: if esAdmin() || esDirectivo();
+    }
+
+    match /materias/{materiaId} {
+      allow read: if esStaff() || esAlumnoDeCurso(resource.data.cursoId);
+      allow create, delete: if esAdmin() || esDirectivo();
+      allow update: if esAdmin()
+        || esDirectivo()
+        || (esDocenteDeMateria(materiaId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['nombre', 'descripcion', 'activo', 'updatedAt']));
+    }
+
+    match /inscripciones/{inscripcionId} {
+      allow read: if esStaff() || esMiAlumno(resource.data.alumnoId);
+      allow create, delete: if esAdmin();
+      allow update: if esAdmin();
+    }
+
+    match /horarios/{horarioId} {
+      allow read: if puedeVerCurso(resource.data.cursoId);
+      allow create, delete: if esAdmin() || esDirectivo();
+      allow update: if esAdmin()
+        || esDirectivo()
+        || (esPreceptorDelCurso(resource.data.cursoId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['aula', 'horaInicio', 'horaFin', 'activo', 'updatedAt']));
+    }
+
+    match /asistencias/{asistenciaId} {
+      allow read: if esMiAlumno(resource.data.alumnoId) || puedeOperarCurso(resource.data.cursoId);
+
+      // CREATE (staff): registra asistencia en un curso que puede operar.
+      // CREATE (alumno): solo auto-registro por QR, en su propio curso, con
+      // registradoPor = su propio uid, allowlist exacta y validacion server-side
+      // de materia/horario/sesion (existencia, curso y ventana horaria). El
+      // creadoEn lo resuelve el serverTimestamp del SDK (no se confia en el cliente).
+      //
+      // PRUEBA VERIFICABLE: el QR stateless (qrCore/qrDinamico) lleva un secreto
+      // embebido en el bundle, asi que Firestore NO puede demostrar que el token
+      // lo emitio una autoridad confiable. Por eso el CREATE del alumno EXIGE
+      // siempre una sesionQRId (nunca null) que exista en sesionesQR, sea del
+      // mismo curso y fechaKey, este activa y caiga dentro de su ventana
+      // [horaInicio, horaFin] segun el reloj del servidor (request.time). El token
+      // stateless queda, a lo sumo, como validacion de cliente.
+      allow create: if puedeOperarCurso(request.resource.data.cursoId)
+        || (esMiAlumno(request.resource.data.alumnoId)
+            && request.resource.data.alumnoId == perfil().data.alumnoId
+            && request.resource.data.cursoId == miAlumno().data.cursoId
+            && request.resource.data.metodoRegistro == 'qr'
+            && request.resource.data.estado in ['presente', 'tarde']
+            && request.resource.data.registradoPor == request.auth.uid
+            && request.resource.data.keys().hasOnly(camposAsistenciaCreacion())
+            && (request.resource.data.materiaId == null
+                || datosMateria(request.resource.data.materiaId).cursoId == request.resource.data.cursoId)
+            && (request.resource.data.horarioId == null
+                || datosHorario(request.resource.data.horarioId).cursoId == request.resource.data.cursoId)
+            && request.resource.data.sesionQRId is string
+            && datosSesion(request.resource.data.sesionQRId).activo == true
+            && request.time >= datosSesion(request.resource.data.sesionQRId).horaInicio
+            && request.time <= datosSesion(request.resource.data.sesionQRId).horaFin
+            && datosSesion(request.resource.data.sesionQRId).cursoId == request.resource.data.cursoId
+            && datosSesion(request.resource.data.sesionQRId).fechaKey == request.resource.data.fechaKey);
+
+      // UPDATE (staff): estado/observaciones, sin poder tocar creadoEn.
+      // UPDATE (alumno, reescaneo): solo hora/estado/actualizadoEn; hora no
+      // retrocede ni queda en el futuro, y tarde -> presente queda bloqueado.
+      // Todos los campos de identidad, curso, materia, fecha, metodo y sesion
+      // quedan inmutables (fuera del allowlist / con guard de creadoEn).
+      allow update: if (
+                        (esGestion()
+                         || ((esPreceptorDelCurso(resource.data.cursoId) || esDocenteDelCurso(resource.data.cursoId))
+                             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(camposAsistencia())))
+                        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['creadoEn'])
+                      )
+        || (esMiAlumno(resource.data.alumnoId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(camposAsistenciaQrUpdate())
+            && request.resource.data.hora >= resource.data.hora
+            && request.resource.data.hora <= request.time
+            && !(resource.data.estado == 'tarde' && request.resource.data.estado == 'presente'));
+      allow delete: if esAdmin();
+    }
+
+    match /sesionesQR/{sesionId} {
+      // LIMITACION CONOCIDA (sin Cloud Functions en esta etapa): un alumno
+      // autorizado (puedeVerCurso) puede leer el codigo de una sesion de su
+      // curso. Mitigacion pendiente: mover la validacion/entrega a una Function.
+      allow read: if puedeVerCurso(resource.data.cursoId);
+      // CREATE (DECISION 2): pueden abrir sesion administrador, directivo,
+      // preceptor del curso y profesor del curso. `puedeOperarCurso` ya es
+      // esGestion() (administrador + directivo) OR preceptor/docente del curso,
+      // asi que un alumno nunca puede crear una sesion.
+      allow create: if puedeOperarCurso(request.resource.data.cursoId)
+        && request.resource.data.creadoPor == request.auth.uid
+        && request.resource.data.codigo is string
+        && request.resource.data.codigo.size() == 8
+        && request.resource.data.keys().hasOnly(['cursoId', 'materiaId', 'creadoPor', 'fecha',
+              'fechaKey', 'horaInicio', 'horaFin', 'codigo', 'activo', 'ubicacion', 'creadoEn']);
+
+      // UPDATE (DECISIONES 1 y 3): el administrador conserva sus permisos.
+      // Directivo, preceptor y profesor comparten el MISMO allowlist acotado
+      // (camposSesionQrUpdate), que incluye `codigo` para la rotacion.
+      // El curso evaluado es resource.data.cursoId (el vigente), de modo que
+      // una sesion abierta no se puede mover a otro curso.
+      allow update: if esAdmin()
+        || ((esDirectivo()
+             || esPreceptorDelCurso(resource.data.cursoId)
+             || esDocenteDelCurso(resource.data.cursoId))
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(camposSesionQrUpdate()));
+      allow delete: if esAdmin();
+    }
+
+    match /justificaciones/{justificacionId} {
+      allow read: if esStaff() || esMiAlumno(resource.data.alumnoId);
+      allow create: if esMiAlumno(request.resource.data.alumnoId)
+        || esGestion()
+        || esPreceptorDelCurso(datosAlumno(request.resource.data.alumnoId).cursoId);
+      allow update: if esGestion()
+        || esPreceptorDelCurso(datosAlumno(resource.data.alumnoId).cursoId)
+        || (esMiAlumno(resource.data.alumnoId)
+            && resource.data.estado == 'pendiente'
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['motivo', 'observaciones', 'actualizadoEn']));
+      allow delete: if esAdmin();
+    }
+
+    match /notas/{notaId} {
+      allow read: if esMiAlumno(resource.data.alumnoId) || esStaff();
+      allow create: if esProfesor() && esMateriaDelCurso(request.resource.data.materiaId, request.resource.data.cursoId);
+      // El profesor solo edita los campos calificables: alumnoId/materiaId/cursoId
+      // quedan inmutables (no puede mover una nota de alumno, materia o curso).
+      allow update: if esProfesor()
+        && esMateriaDelCurso(resource.data.materiaId, resource.data.cursoId)
+        && request.resource.data.materiaId == resource.data.materiaId
+        && request.resource.data.cursoId == resource.data.cursoId
+        && request.resource.data.alumnoId == resource.data.alumnoId
+        && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['nota', 'tipo', 'descripcion', 'periodo', 'fecha', 'observaciones', 'actualizadoEn']);
+      allow delete: if esProfesor() && esMateriaDelCurso(resource.data.materiaId, resource.data.cursoId);
+    }
+
+    match /examenes/{examenId} {
+      allow read: if puedeVerCurso(resource.data.cursoId);
+      allow create: if esGestion() || esProfesor() && esMateriaDelCurso(request.resource.data.materiaId, request.resource.data.cursoId);
+      allow update, delete: if esGestion() || esDocenteDeMateria(resource.data.materiaId);
+    }
+
+    match /trabajosPracticos/{tpId} {
+      allow read: if puedeVerCurso(resource.data.cursoId);
+      allow create: if esGestion() || esProfesor() && esMateriaDelCurso(request.resource.data.materiaId, request.resource.data.cursoId);
+      allow update, delete: if esGestion() || esDocenteDeMateria(resource.data.materiaId);
+    }
+
+    match /entregasTP/{entregaId} {
+      allow read: if esMiAlumno(resource.data.alumnoId) || esStaff();
+      allow create: if esMiAlumno(request.resource.data.alumnoId);
+      allow update: if esMiAlumno(resource.data.alumnoId)
+        || (esProfesor() && esDocenteDeMateria(get(/databases/$(database)/documents/trabajosPracticos/$(resource.data.tpId)).data.materiaId));
+      allow delete: if esAdmin();
+    }
+
+    match /novedades/{novedadId} {
+      allow read: if esStaff() || esAlumno();
+      allow create: if esStaff();
+      allow update: if esStaff()
+        || (esAlumno()
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['confirmadaPor', 'leidaPor']));
+      allow delete: if esAdmin() || esDirectivo();
+    }
+
+    match /notificaciones/{notificacionId} {
+      allow read: if autenticado() && resource.data.usuarioId == request.auth.uid;
+      allow update: if autenticado() && resource.data.usuarioId == request.auth.uid;
+      allow create: if esStaff();
+      allow delete: if esAdmin();
+    }
+
+    match /auditoria/{eventoId} {
+      allow read: if esAdmin() || esDirectivo() || (esDocente() && resource.data.usuarioId == request.auth.uid);
+      allow create: if esStaff();
+      allow update, delete: if esAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

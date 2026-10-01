@@ -1,94 +1,38 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert } from 'react-native';
-import { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import typography from '../theme/typography';
 import Card from '../components/Card';
 import Header from '../components/Header';
+import Calendar from '../components/Calendar';
+import { attendance, courses, students, formatDateKey, toDateKey, todayKey } from '../services/firestore';
+import { notify } from '../utils/notify';
 
-// Datos de historial de asistencia (simulados)
-const attendanceHistory = [
-  { 
-    id: '1', 
-    student: 'Juan Pérez', 
-    course: '3° A', 
-    date: '2024-01-15', 
-    time: '08:15', 
-    status: 'presente',
-    observations: 'Llegó temprano'
-  },
-  { 
-    id: '2', 
-    student: 'María López', 
-    course: '4° B', 
-    date: '2024-01-15', 
-    time: '08:45', 
-    status: 'tarde',
-    observations: 'Justificó llegada tarde'
-  },
-  { 
-    id: '3', 
-    student: 'Carlos Gómez', 
-    course: '5° C', 
-    date: '2024-01-15', 
-    time: '-', 
-    status: 'ausente',
-    observations: 'Sin aviso'
-  },
-  { 
-    id: '4', 
-    student: 'Ana Martínez', 
-    course: '3° A', 
-    date: '2024-01-14', 
-    time: '08:10', 
-    status: 'presente',
-    observations: '-'
-  },
-  { 
-    id: '5', 
-    student: 'Lucas Rodríguez', 
-    course: '4° B', 
-    date: '2024-01-14', 
-    time: '08:20', 
-    status: 'presente',
-    observations: '-'
-  },
-  { 
-    id: '6', 
-    student: 'Sofía Fernández', 
-    course: '5° C', 
-    date: '2024-01-14', 
-    time: '08:50', 
-    status: 'tarde',
-    observations: 'Problemas de transporte'
-  },
-  { 
-    id: '7', 
-    student: 'Tomás Díaz', 
-    course: '3° A', 
-    date: '2024-01-13', 
-    time: '-', 
-    status: 'ausente',
-    observations: 'Presentó justificación médica'
-  },
-];
 
 const statusConfig = {
-  presente: { 
-    label: 'Presente', 
-    color: colors.success, 
+  presente: {
+    label: 'Presente',
+    color: colors.success,
     icon: '✓',
     bgOpacity: '20'
   },
-  tarde: { 
-    label: 'Llegó tarde', 
-    color: colors.warning, 
+  tarde: {
+    label: 'Llegó tarde',
+    color: colors.warning,
     icon: '⏰',
     bgOpacity: '20'
   },
-  ausente: { 
-    label: 'Ausente', 
-    color: colors.error, 
+  ausente: {
+    label: 'Ausente',
+    color: colors.error,
     icon: '✗',
+    bgOpacity: '20'
+  },
+  justificado: {
+    label: 'Justificado',
+    color: colors.primary,
+    icon: '📄',
     bgOpacity: '20'
   }
 };
@@ -96,23 +40,124 @@ const statusConfig = {
 export default function EventsScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos'); // 'todos', 'presente', 'tarde', 'ausente'
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [registros, setRegistros] = useState([]);
+  const [marcas, setMarcas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [usandoDemo, setUsandoDemo] = useState(false);
+  const listaRef = useRef(null);
+  const avisarAlCargar = useRef(false);
+
+  useEffect(() => {
+    let vigente = true;
+    setCargando(true);
+
+    const cargar = async () => {
+      try {
+        const datos = await attendance.obtenerAsistenciasPorFecha(selectedDate);
+
+        const alumnos = await students.obtenerMapaAlumnos(datos.map((item) => item.alumnoId));
+        const mapaCursos = await courses.obtenerMapaCursos(datos.map((item) => item.cursoId));
+
+        if (!vigente) return;
+
+        setRegistros(
+          datos.map((item) => ({
+            id: item.id,
+            alumnoId: item.alumnoId,
+            cursoId: item.cursoId,
+            student: alumnos[item.alumnoId]?.nombreCompleto ?? 'Alumno',
+            course: mapaCursos[item.cursoId]?.nombre ?? '-',
+            date: item.fechaKey ?? selectedDate,
+            time: item.horaTexto ?? '-',
+            status: item.estado,
+            observations: item.observaciones || '-'
+          }))
+        );
+        setUsandoDemo(false);
+
+        if (avisarAlCargar.current) {
+          avisarAlCargar.current = false;
+          notify(
+            formatDateKey(selectedDate),
+            datos.length
+              ? `${datos.length} ${datos.length === 1 ? 'registro' : 'registros'} de asistencia`
+              : 'Sin registros de asistencia para ese día'
+          );
+        }
+      } catch (error) {
+        if (vigente) setUsandoDemo(true);
+        if (avisarAlCargar.current) avisarAlCargar.current = false;
+      } finally {
+        if (vigente) setCargando(false);
+      }
+    };
+
+    cargar();
+    return () => {
+      vigente = false;
+    };
+  }, [selectedDate]);
+
+  // Fechas con movimientos para marcar en el calendario
+  useEffect(() => {
+    let vigente = true;
+
+    const cargarMarcas = async () => {
+      try {
+        const ultimas = await attendance.obtenerUltimasAsistencias({ limite: 200 });
+        if (vigente) setMarcas(ultimas);
+      } catch (error) {
+        if (vigente) setMarcas([]);
+      }
+    };
+
+    cargarMarcas();
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  const base = registros;
+
+  // Días marcados para el calendario (a partir de asistencias de Firestore)
+  const diasMarcados = useMemo(() => {
+    const mapa = new Map();
+    const agregar = (clave, estado) => {
+      if (!clave) return;
+      const previa = mapa.get(clave);
+      if (!previa) {
+        mapa.set(clave, { fecha: clave, estados: estado ? [estado] : [] });
+        return;
+      }
+      if (estado && !previa.estados.includes(estado)) previa.estados.push(estado);
+    };
+
+    marcas.forEach((item) => agregar(item.fechaKey ?? toDateKey(item.fecha), item.estado));
+    base.forEach((item) => agregar(item.date, item.status));
+
+    return [...mapa.entries()].flatMap(([clave, estados]) =>
+      estados.length ? estados.map((estado) => ({ fecha: clave, estado })) : [{ fecha: clave }]
+    );
+  }, [marcas, base]);
 
   // Filtrar historial
-  const filteredHistory = attendanceHistory.filter(item => {
-    const matchesSearch = item.student.toLowerCase().includes(searchText.toLowerCase()) ||
-                          item.course.toLowerCase().includes(searchText.toLowerCase());
-    const matchesStatus = filterStatus === 'todos' || item.status === filterStatus;
-    const matchesDate = item.date === selectedDate;
-    
-    return matchesSearch && matchesStatus && matchesDate;
-  });
+  const filteredHistory = useMemo(() => {
+    const term = searchText.trim().toLowerCase();
 
-  // Obtener fechas únicas para el selector
-  const uniqueDates = [...new Set(attendanceHistory.map(item => item.date))];
+    return base.filter(item => {
+      const matchesSearch = !term ||
+                          item.student.toLowerCase().includes(term) ||
+                          item.course.toLowerCase().includes(term);
+      const matchesStatus = filterStatus === 'todos' || item.status === filterStatus;
+      const matchesDate = item.date === selectedDate;
+
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  }, [base, searchText, filterStatus, selectedDate]);
 
   const getStatusStyle = (status) => {
-    const config = statusConfig[status];
+    const config = statusConfig[status] ?? statusConfig.ausente;
     return {
       backgroundColor: config.color + config.bgOpacity,
       borderLeftColor: config.color,
@@ -120,12 +165,16 @@ export default function EventsScreen({ navigation }) {
   };
 
   const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString('es-AR', options);
+    const [year, month, day] = String(dateString).split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString('es-AR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
   };
 
   const getStatsForDate = (date) => {
-    const dayRecords = attendanceHistory.filter(item => item.date === date);
+    const dayRecords = base.filter(item => item.date === date);
     const presentes = dayRecords.filter(item => item.status === 'presente').length;
     const tarde = dayRecords.filter(item => item.status === 'tarde').length;
     const ausentes = dayRecords.filter(item => item.status === 'ausente').length;
@@ -134,30 +183,20 @@ export default function EventsScreen({ navigation }) {
 
   const stats = getStatsForDate(selectedDate);
 
-  return (
-    <View style={styles.container}>
-      <Header 
-        title="Historial de Asistencia" 
-        subtitle="Registro completo de asistencia por día"
-      />
+  const seleccionarDia = (fecha) => {
+    avisarAlCargar.current = true;
+    setSelectedDate(fecha);
+    listaRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
 
-      {/* Selector de fecha */}
-      <View style={styles.dateSelector}>
-        <Text style={styles.dateLabel}>Fecha:</Text>
-        <View style={styles.dateButtons}>
-          {uniqueDates.map(date => (
-            <TouchableOpacity
-              key={date}
-              style={[styles.dateButton, selectedDate === date && styles.dateButtonActive]}
-              onPress={() => setSelectedDate(date)}
-            >
-              <Text style={[styles.dateButtonText, selectedDate === date && styles.dateButtonTextActive]}>
-                {formatDate(date).split(',')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+  const renderListHeader = () => (
+    <>
+      <Calendar
+        eventos={diasMarcados}
+        selectedDate={selectedDate}
+        onSelect={seleccionarDia}
+        color="primary"
+      />
 
       {/* Resumen del día */}
       <Card style={styles.summaryCard}>
@@ -196,7 +235,7 @@ export default function EventsScreen({ navigation }) {
             onChangeText={setSearchText}
           />
         </View>
-        
+
         <View style={styles.statusFilters}>
           <TouchableOpacity
             style={[styles.filterChip, filterStatus === 'todos' && styles.filterChipActive]}
@@ -231,25 +270,54 @@ export default function EventsScreen({ navigation }) {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Lista de registros */}
+        {usandoDemo && (
+          <Text style={styles.demoText}>Sin conexión con Firestore</Text>
+        )}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
+      <Header 
+        title="Historial de Asistencia" 
+        subtitle="Registro completo de asistencia por día"
+      />
+
       <FlatList
+        ref={listaRef}
         data={filteredHistory}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyText}>No hay registros para mostrar</Text>
-            <Text style={styles.emptySubtext}>Prueba con otros filtros o fecha</Text>
-          </View>
+          cargando ? (
+            <ActivityIndicator style={styles.loader} color={colors.primary} />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📋</Text>
+              <Text style={styles.emptyText}>No hay registros para mostrar</Text>
+              <Text style={styles.emptySubtext}>Prueba con otros filtros o fecha</Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          cargando && filteredHistory.length ? (
+            <ActivityIndicator style={styles.loader} color={colors.primary} />
+          ) : null
         }
         renderItem={({ item }) => {
-          const status = statusConfig[item.status];
+          const status = statusConfig[item.status] ?? statusConfig.ausente;
           return (
-            <TouchableOpacity 
-              onPress={() => navigation?.navigate('StudentDetail', { student: item })}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() =>
+                notify(
+                  item.student,
+                  `${item.course} · ${status.label}${item.time !== '-' ? ` · ${item.time} hs` : ''}`
+                )
+              }
             >
               <Card style={[styles.eventCard, getStatusStyle(item.status)]}>
                 <View style={styles.eventRow}>
@@ -281,10 +349,11 @@ export default function EventsScreen({ navigation }) {
       <TouchableOpacity 
         style={styles.reportButton}
         onPress={() => {
-          Alert.alert('Generar reporte', `Reporte de asistencia del ${formatDate(selectedDate)} generado`);
+          notify('Generar reporte', `Reporte de asistencia del ${formatDate(selectedDate)} generado`);
         }}
       >
-        <Text style={styles.reportButtonText}>📊 Generar reporte del día</Text>
+        <MaterialCommunityIcons name="chart-box-outline" size={18} color={colors.white} />
+        <Text style={styles.reportButtonText}>Generar reporte del día</Text>
       </TouchableOpacity>
     </View>
   );
@@ -294,38 +363,6 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: colors.background 
-  },
-  dateSelector: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  dateLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  dateButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dateButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.border,
-    marginRight: 8,
-  },
-  dateButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  dateButtonText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  dateButtonTextActive: {
-    color: colors.white,
-    fontWeight: '600',
   },
   summaryCard: {
     marginHorizontal: 16,
@@ -384,6 +421,16 @@ const styles = StyleSheet.create({
   statusFilters: {
     flexDirection: 'row',
     gap: 8,
+  },
+  demoText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.warning,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  loader: {
+    marginTop: 32,
   },
   filterChip: {
     paddingHorizontal: 12,
@@ -480,6 +527,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
