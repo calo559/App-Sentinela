@@ -1,6 +1,7 @@
 // Auth simulado con almacenamiento local.
 // Demo (password 123456):
 //   alumno@escuela.edu | docente@escuela.edu | preceptor@escuela.edu
+import { getAuth, signOut } from 'firebase/auth';
 
 const USERS_KEY = 'sia_users';
 const ACTIVE_KEY = 'sia_active_user';
@@ -96,6 +97,15 @@ export function getActiveUser() {
 export function logout() {
   memActive = null;
   write(ACTIVE_KEY, null);
+  // Puente Firebase: si hay una sesión de Authentication activa, cerrarla
+  // también (los botones de "Cerrar sesión" de las pantallas originales
+  // llaman a esta función).
+  try {
+    const fbAuth = getAuth();
+    if (fbAuth.currentUser) signOut(fbAuth).catch(() => {});
+  } catch {
+    // sin Firebase disponible: el cierre local ya se hizo
+  }
 }
 
 /**

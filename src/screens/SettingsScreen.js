@@ -1,341 +1,277 @@
-// SettingsScreen.jsx — ahora se abre desde Perfil → "Configuración"
-import { useState, useRef, useEffect, useMemo } from "react";
-import {
-  View,
-  Text,
-  Switch,
-  ScrollView,
-  TouchableOpacity,
-  Animated,
-  Share,
-  Linking,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useTheme } from "../context/ThemeContext";
-import { notify } from "../utils/notify";
-import typography from "../theme/typography";
+import { useMemo } from 'react';
+import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { infoRol } from '../utils/roles';
+import { notify } from '../utils/notify';
+import { SCREENS } from '../utils/constants';
+import appInfo from '../../app.json';
+
+const ESCUELA = 'Escuela Técnica Nº 3 "S.A. de Padrón"';
+
+const inicialesDe = (nombre, apellido) => {
+  const inicial = `${(nombre ?? '').trim().charAt(0)}${(apellido ?? '').trim().charAt(0)}`.toUpperCase();
+  return inicial || '?';
+};
 
 export default function SettingsScreen({ navigation }) {
   const { colors, isDarkMode, toggleDarkMode } = useTheme();
-  const [notifications, setNotifications] = useState(true);
-  const [sound, setSound] = useState(true);
-  const [autoAttendance, setAutoAttendance] = useState(false);
-  const [reportReminders, setReportReminders] = useState(true);
-  const [language, setLanguage] = useState("es");
-  const [dataSaver, setDataSaver] = useState(false);
+  const { perfil, rol, salir } = useAuth();
 
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const cardScale = useRef(new Animated.Value(0.95)).current;
-  const headerScale = useRef(new Animated.Value(0.9)).current;
+  const info = infoRol(rol);
+  const nombreCompleto = [perfil?.nombre, perfil?.apellido].filter(Boolean).join(' ').trim() || 'Usuario';
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
+  const handleSalir = () => {
+    notify('Cerrar sesión', '¿Querés cerrar la sesión actual?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar sesión',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await salir();
+          } catch (error) {
+            notify('No se pudo cerrar sesión', error?.message ?? 'Intentá de nuevo.');
+            return;
+          }
+        },
+      },
+    ]);
+  };
+
+  const s = useMemo(
+    () =>
+      StyleSheet.create({
+        safe: { flex: 1, backgroundColor: colors.background },
+        scroll: { paddingBottom: 32 },
+        header: {
+          alignItems: 'center',
+          borderRadius: 24,
+          marginHorizontal: 16,
+          marginTop: 14,
+          marginBottom: 22,
+          paddingVertical: 26,
+          shadowColor: colors.black,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.18,
+          shadowRadius: 12,
+          elevation: 8,
+        },
+        headerIcon: {
+          width: 66,
+          height: 66,
+          borderRadius: 33,
+          backgroundColor: `${colors.white}26`,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 14,
+        },
+        headerTitle: { fontSize: 26, fontWeight: '800', color: colors.white },
+        headerSubtitle: { fontSize: 13, color: colors.white, opacity: 0.9, marginTop: 6, textAlign: 'center' },
+
+        account: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          marginHorizontal: 16,
+          marginBottom: 20,
+          padding: 16,
+          borderRadius: 18,
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        avatar: {
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: colors.primary,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        avatarText: { fontSize: 20, fontWeight: '800', color: colors.onPrimary },
+        accountTexts: { flex: 1 },
+        accountName: { fontSize: 16, fontWeight: '800', color: colors.text },
+        accountMeta: { fontSize: 13, color: colors.textSecondary, marginTop: 3 },
+        accountRole: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          marginTop: 7,
+          alignSelf: 'flex-start',
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 999,
+          backgroundColor: `${colors.primary}1A`,
+        },
+        accountRoleText: { fontSize: 11.5, fontWeight: '700', color: colors.primary },
+
+        section: {
+          marginHorizontal: 16,
+          marginBottom: 18,
+          borderRadius: 18,
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden',
+        },
+        sectionHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingHorizontal: 18,
+          paddingVertical: 13,
+          backgroundColor: colors.surfaceVariant,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        sectionTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.8, color: colors.primary },
+        item: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 14,
+          paddingHorizontal: 18,
+          paddingVertical: 16,
+        },
+        itemBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+        itemIcon: {
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.surfaceVariant,
+        },
+        itemTexts: { flex: 1, marginLeft: 12 },
+        itemLabel: { fontSize: 15, fontWeight: '700', color: colors.text },
+        itemDesc: { fontSize: 12.5, color: colors.textSecondary, marginTop: 3, lineHeight: 17 },
+        logout: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          marginHorizontal: 16,
+          marginTop: 4,
+          paddingVertical: 14,
+          borderRadius: 14,
+          backgroundColor: `${colors.error}14`,
+          borderWidth: 1,
+          borderColor: colors.error,
+        },
+        logoutText: { fontSize: 15, fontWeight: '800', color: colors.error },
+
+        about: { alignItems: 'center', marginTop: 26, paddingHorizontal: 24 },
+        aboutSchool: { fontSize: 12.5, color: colors.textSecondary, textAlign: 'center' },
+        aboutSchoolName: { fontSize: 15, fontWeight: '700', color: colors.primary, textAlign: 'center', marginTop: 4 },
+        aboutDivider: { width: 50, height: 2, borderRadius: 2, backgroundColor: colors.secondary, marginVertical: 14 },
+        aboutText: { fontSize: 12, color: colors.textSecondary, textAlign: 'center' },
+        aboutVersion: { fontSize: 11.5, color: colors.textSecondary, textAlign: 'center', marginTop: 4 },
       }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        friction: 6,
-        tension: 50,
-        useNativeDriver: true,
-      }),
-      Animated.spring(cardScale, {
-        toValue: 1,
-        friction: 5,
-        tension: 45,
-        useNativeDriver: true,
-      }),
-      Animated.spring(headerScale, {
-        toValue: 1,
-        friction: 4,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  const handleShareApp = async () => {
-    try {
-      await Share.share({
-        message: "Te invito a usar el Sistema de Asistencia Escolar Técnica Nº 3 - S.A. de Padrón",
-        title: "Compartir aplicación",
-      });
-    } catch (error) {
-      notify("Error", "No se pudo compartir la aplicación");
-    }
-  };
-
-  const handleClearData = () => {
-    notify(
-      "Limpiar datos",
-      "¿Estás seguro que deseas limpiar los datos de caché? Esta acción no afectará tus datos personales.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Limpiar",
-          style: "destructive",
-          onPress: () => notify("Éxito", "Datos de caché eliminados correctamente"),
-        },
-      ],
-    );
-  };
-
-  const handleContactSupport = async () => {
-    try {
-      await Linking.openURL("mailto:soporte@escuelatecnica3.edu?subject=Soporte técnico - Sistema de Asistencia");
-    } catch (error) {
-      notify("Error", "No se pudo abrir el cliente de correo");
-    }
-  };
-
-  const handleVersionPress = () => {
-    notify("Versión 2.0.0", 'Sistema de Asistencia Escolar\nEscuela Técnica Nº 3 "S.A. de Padrón"');
-  };
-
-  const handleBack = () => {
-    if (navigation?.canGoBack?.()) navigation.goBack();
-    else navigation?.navigate?.("Home");
-  };
-
-  // Secciones de configuración
-  const sections = [
-    {
-      title: "NOTIFICACIONES",
-      icon: "bell-outline",
-      items: [
-        {
-          label: "Notificaciones push",
-          description: "Recibir alertas de asistencia y novedades",
-          value: notifications,
-          onToggle: setNotifications,
-          type: "switch",
-        },
-        {
-          label: "Sonido de alerta",
-          description: "Reproducir sonido al recibir notificaciones",
-          value: sound,
-          onToggle: setSound,
-          type: "switch",
-        },
-        {
-          label: "Recordatorios de reportes",
-          description: "Recordatorios semanales para generar reportes",
-          value: reportReminders,
-          onToggle: setReportReminders,
-          type: "switch",
-        },
-      ],
-    },
-    {
-      title: "ASISTENCIA",
-      icon: "calendar-check-outline",
-      items: [
-        {
-          label: "Asistencia automática",
-          description: "Registro automático al entrar al aula",
-          value: autoAttendance,
-          onToggle: setAutoAttendance,
-          type: "switch",
-        },
-        {
-          label: "Modo ahorro de datos",
-          description: "Reducir consumo de datos móviles",
-          value: dataSaver,
-          onToggle: setDataSaver,
-          type: "switch",
-        },
-      ],
-    },
-    {
-      title: "APARIENCIA",
-      icon: "palette-outline",
-      items: [
-        {
-          label: "Modo nocturno",
-          description: "Tema oscuro para reducir fatiga visual",
-          value: isDarkMode,
-          onToggle: toggleDarkMode,
-          type: "switch",
-        },
-        {
-          label: "Idioma",
-          description: language === "es" ? "Español" : "English",
-          value: language,
-          onToggle: () => {
-            notify("Idioma", "Selecciona un idioma", [
-              { text: "Español", onPress: () => setLanguage("es") },
-              { text: "English", onPress: () => setLanguage("en") },
-            ]);
-          },
-          type: "button",
-        },
-      ],
-    },
-    {
-      title: "ACERCA DE",
-      icon: "information-outline",
-      items: [
-        {
-          label: "Compartir aplicación",
-          description: "Invitar a otros docentes",
-          onPress: handleShareApp,
-          type: "action",
-        },
-        {
-          label: "Soporte técnico",
-          description: "Contactar al equipo de soporte",
-          onPress: handleContactSupport,
-          type: "action",
-        },
-        {
-          label: "Limpiar caché",
-          description: "Liberar espacio de almacenamiento",
-          onPress: handleClearData,
-          type: "action",
-        },
-        {
-          label: "Versión 2.0.0",
-          description: "Tocar para ver detalles",
-          onPress: handleVersionPress,
-          type: "version",
-        },
-      ],
-    },
-  ];
+    [colors]
+  );
 
   return (
-    <LinearGradient colors={[colors.background, isDarkMode ? colors.surface : colors.surfaceVariant]} style={s.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
-        {/* Barra superior con botón de vuelta (se abre desde Perfil) */}
-        <View style={s.topBar}>
-          <TouchableOpacity
-            style={[s.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={handleBack}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[s.topTitle, { color: colors.text }]}>Configuración</Text>
-          <View style={{ width: 40 }} />
+    <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        <LinearGradient
+          colors={[colors.primary, colors.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={s.header}
+        >
+          <View style={s.headerIcon}>
+            <MaterialCommunityIcons name="cog-outline" size={32} color={colors.white} />
+          </View>
+          <Text style={s.headerTitle}>Configuración</Text>
+          <Text style={s.headerSubtitle}>Tu cuenta, la apariencia y los datos de la app</Text>
+        </LinearGradient>
+
+        <View style={s.account}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>{inicialesDe(perfil?.nombre, perfil?.apellido)}</Text>
+          </View>
+          <View style={s.accountTexts}>
+            <Text style={s.accountName}>{nombreCompleto}</Text>
+            <Text style={s.accountMeta} numberOfLines={1}>
+              {perfil?.email || 'Sin correo asociado'}
+            </Text>
+            <View style={s.accountRole}>
+              <MaterialCommunityIcons name={info.icon} size={13} color={colors.primary} />
+              <Text style={s.accountRoleText}>{info.label}</Text>
+            </View>
+          </View>
         </View>
 
-        <Animated.View style={[s.headerContainer, { transform: [{ scale: headerScale }], opacity: fadeAnim }]}>
-          <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={s.headerGradient}
-          >
-            <View style={s.headerIconContainer}>
-              <MaterialCommunityIcons name="cog-outline" size={34} color="#FFFFFF" />
-            </View>
-            <Text style={s.headerTitle}>Configuración</Text>
-            <Text style={s.headerSubtitle}>Personaliza tu experiencia en el sistema</Text>
-          </LinearGradient>
-        </Animated.View>
+        <View style={s.section}>
+          <View style={s.sectionHeader}>
+            <MaterialCommunityIcons name="palette-outline" size={17} color={colors.primary} />
+            <Text style={s.sectionTitle}>APARIENCIA</Text>
+          </View>
 
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-          {sections.map((section) => (
-            <Animated.View key={section.title} style={[s.sectionContainer, { backgroundColor: colors.surface, transform: [{ scale: cardScale }] }]}>
-              <View style={[s.sectionHeader, { backgroundColor: colors.surfaceVariant, borderBottomColor: colors.border }]}>
-                <MaterialCommunityIcons name={section.icon} size={18} color={colors.primary} style={s.sectionIcon} />
-                <Text style={[s.sectionTitle, { color: colors.primary }]}>{section.title}</Text>
-              </View>
-              <View style={s.sectionContent}>
-                {section.items.map((item, itemIndex) => (
-                  <TouchableOpacity
-                    key={item.label}
-                    style={[s.settingItem, itemIndex < section.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                    onPress={item.onPress || item.onToggle}
-                    activeOpacity={item.type !== "switch" ? 0.7 : 1}
-                    disabled={item.type === "switch"}
-                  >
-                    <View style={s.settingInfo}>
-                      <Text style={[s.settingLabel, { color: colors.text }]}>{item.label}</Text>
-                      {item.description && <Text style={[s.settingDescription, { color: colors.textSecondary }]}>{item.description}</Text>}
-                    </View>
-                    {item.type === "switch" && (
-                      <Switch
-                        value={item.value}
-                        onValueChange={item.onToggle}
-                        trackColor={{ false: colors.border, true: colors.primaryLight }}
-                        thumbColor={item.value ? colors.primary : colors.textSecondary}
-                        ios_backgroundColor={colors.border}
-                      />
-                    )}
-                    {item.type === "button" && (
-                      <View style={s.buttonValue}>
-                        <Text style={[s.buttonValueText, { color: colors.textSecondary }]}>{item.value === "es" ? "Español" : "English"}</Text>
-                        <Text style={[s.chevron, { color: colors.textSecondary }]}>›</Text>
-                      </View>
-                    )}
-                    {item.type === "action" && <Text style={[s.chevron, { color: colors.textSecondary }]}>›</Text>}
-                    {item.type === "version" && (
-                      <View style={[s.versionBadge, { backgroundColor: colors.primaryLight }]}>
-                        <Text style={[s.versionText, { color: colors.primary }]}>2.0.0</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </Animated.View>
-          ))}
-
-          <Animated.View style={[s.footerContainer, { backgroundColor: colors.surface, opacity: fadeAnim, transform: [{ scale: cardScale }] }]}>
-            <View style={s.footerContent}>
-              <Text style={[s.footerSchool, { color: colors.textSecondary }]}>Escuela de Educación Secundaria</Text>
-              <Text style={[s.footerSchoolName, { color: colors.primary }]}>Técnica Nº 3 "S.A. de Padrón"</Text>
-              <View style={[s.footerDivider, { backgroundColor: colors.primaryLight }]} />
-              <Text style={[s.footerRights, { color: colors.textSecondary }]}>© 2024 - Sistema de Asistencia Escolar</Text>
-              <Text style={[s.footerVersion, { color: colors.textSecondary }]}>Versión 2.0.0 • Build 2401</Text>
+          <View style={s.item}>
+            <MaterialCommunityIcons name={isDarkMode ? 'weather-night' : 'white-balance-sunny'} size={20} color={colors.primary} />
+            <View style={s.itemTexts}>
+              <Text style={s.itemLabel}>Modo oscuro</Text>
+              <Text style={s.itemDesc}>Alterna entre el tema claro y el tema oscuro de la aplicación</Text>
             </View>
-          </Animated.View>
-        </Animated.View>
+            <Switch
+              value={isDarkMode}
+              onValueChange={toggleDarkMode}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={isDarkMode ? colors.primary : colors.textSecondary}
+              ios_backgroundColor={colors.border}
+            />
+          </View>
+        </View>
+
+        <View style={s.section}>
+          <View style={s.sectionHeader}>
+            <MaterialCommunityIcons name="information-outline" size={17} color={colors.primary} />
+            <Text style={s.sectionTitle}>ACERCA DE</Text>
+          </View>
+
+          <View style={[s.item, s.itemBorder]}>
+            <View style={s.itemIcon}>
+              <MaterialCommunityIcons name="school-outline" size={19} color={colors.primary} />
+            </View>
+            <View style={s.itemTexts}>
+              <Text style={s.itemLabel}>Institución</Text>
+              <Text style={s.itemDesc}>{ESCUELA}</Text>
+            </View>
+          </View>
+
+          <View style={s.item}>
+            <View style={s.itemIcon}>
+              <MaterialCommunityIcons name="cloud-check-outline" size={19} color={colors.primary} />
+            </View>
+            <View style={s.itemTexts}>
+              <Text style={s.itemLabel}>Datos sincronizados</Text>
+              <Text style={s.itemDesc}>
+                La información del sistema se lee directamente de Firebase Authentication y Firestore
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <TouchableOpacity style={s.logout} onPress={handleSalir}>
+          <MaterialCommunityIcons name="logout" size={18} color={colors.error} />
+          <Text style={s.logoutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+
+        <View style={s.about}>
+          <Text style={s.aboutSchool}>Escuela de Educación Secundaria</Text>
+          <Text style={s.aboutSchoolName}>Técnica Nº 3 "S.A. de Padrón"</Text>
+          <View style={s.aboutDivider} />
+          <Text style={s.aboutText}>© {new Date().getFullYear()} · Sistema de Asistencia Escolar</Text>
+          <Text style={s.aboutVersion}>
+            {appInfo?.expo?.name ?? 'centinela-system'} · versión {appInfo?.expo?.version ?? '1.0.0'}
+          </Text>
+        </View>
       </ScrollView>
-    </LinearGradient>
+    </SafeAreaView>
   );
 }
-
-const s = {
-  container: { flex: 1 },
-  scrollContent: { paddingBottom: 30 },
-  topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
-  backButton: {
-    width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center",
-    borderWidth: 1, elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 4,
-  },
-  topTitle: { flex: 1, textAlign: "center", fontSize: 16, fontWeight: "800" },
-  headerContainer: { marginHorizontal: 16, marginTop: 20, marginBottom: 24, borderRadius: 24, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
-  headerGradient: { paddingVertical: 28, alignItems: "center" },
-  headerIconContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  headerIcon: { fontSize: 36 },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#FFFFFF", marginBottom: 8 },
-  headerSubtitle: { fontSize: 14, color: "rgba(255,255,255,0.9)", textAlign: "center" },
-  sectionContainer: { marginHorizontal: 16, marginBottom: 20, borderRadius: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4, overflow: "hidden" },
-  sectionHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
-  sectionIcon: { marginRight: 10 },
-  sectionTitle: { ...typography.subtitle2, fontWeight: "700", letterSpacing: 0.5 },
-  sectionContent: { paddingHorizontal: 16 },
-  settingItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
-  settingInfo: { flex: 1, marginRight: 16 },
-  settingLabel: { ...typography.body, fontWeight: "600", marginBottom: 4 },
-  settingDescription: { ...typography.caption },
-  buttonValue: { flexDirection: "row", alignItems: "center" },
-  buttonValueText: { ...typography.body, marginRight: 8 },
-  chevron: { fontSize: 18, fontWeight: "600" },
-  versionBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  versionText: { ...typography.caption, fontWeight: "700" },
-  footerContainer: { marginHorizontal: 16, marginTop: 12, marginBottom: 20, borderRadius: 20, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  footerContent: { paddingVertical: 24, alignItems: "center" },
-  footerSchool: { ...typography.caption, marginBottom: 4 },
-  footerSchoolName: { ...typography.body, fontWeight: "600", marginBottom: 12 },
-  footerDivider: { width: 50, height: 2, marginVertical: 12 },
-  footerRights: { ...typography.caption, marginBottom: 4 },
-  footerVersion: { ...typography.caption, fontSize: 10 },
-};

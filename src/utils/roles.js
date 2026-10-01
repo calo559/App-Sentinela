@@ -1,23 +1,37 @@
 import { SCREENS } from './constants';
+import { ROLES } from '../services/firestore/helpers';
 
+// Info de rol para la UI. Cubre los 6 roles del backend (Firestore) y la
+// clave plana 'docente' del repo original (el backend usa 'profesor';
+// normalizarRol() resuelve ese alias en el resto del código).
 export const ROLE_INFO = {
-  alumno: { key: 'alumno', label: 'Alumno', icon: '🎒' },
-  docente: { key: 'docente', label: 'Docente', icon: '👨‍🏫' },
-  preceptor: { key: 'preceptor', label: 'Preceptor', icon: '📋' },
+  [ROLES.ADMIN]: { key: ROLES.ADMIN, label: 'Administrador', icon: 'shield-account-outline' },
+  [ROLES.DIRECTIVO]: { key: ROLES.DIRECTIVO, label: 'Directivo', icon: 'account-tie-outline' },
+  [ROLES.PRECEPTOR]: { key: ROLES.PRECEPTOR, label: 'Preceptor', icon: 'clipboard-text-outline' },
+  [ROLES.PROFESOR]: { key: ROLES.PROFESOR, label: 'Docente', icon: 'human-male-board' },
+  [ROLES.ALUMNO]: { key: ROLES.ALUMNO, label: 'Alumno', icon: 'school-outline' },
+  [ROLES.PADRE]: { key: ROLES.PADRE, label: 'Padre/Madre', icon: 'account-supervisor-outline' },
+  // Compatibilidad con el repo original (localStorage usaba 'docente').
+  docente: { key: 'docente', label: 'Docente', icon: 'human-male-board' },
 };
 
-const STUDENT_TABS = [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE];
+// Compatibilidad con el repo original, que usaba `docente`.
+const ALIASES = { docente: ROLES.PROFESOR };
 
-// Secciones visibles según rol:
-// - alumno:      escanea el QR de la entrada → se marca presente él mismo
-// - preceptor:   no escanea ni muestra QR (el QR vive en la pantalla de la entrada)
-// - docente:     NO toma asistencia (el alumno se marca al escanear);
-//                en el Boletín carga notas
-// Settings ya NO es una sección: vive dentro de Perfil (Stack "Settings").
-const QR_FOR_ROLES = ['alumno'];
+export function normalizarRol(rol) {
+  const clave = String(rol ?? '').toLowerCase();
+  return ALIASES[clave] ?? clave;
+}
 
-// Con QR: el botón circular queda EN EL CENTRO de la barra (estilo Mercado Pago)
-const TABS_WITH_QR_CENTER = [
+export function infoRol(rol) {
+  const normalizado = normalizarRol(rol);
+  return ROLE_INFO[normalizado] ?? { key: normalizado, label: 'Usuario', icon: 'account-outline' };
+}
+
+const STUDENT_TABS = [SCREENS.HOME, SCREENS.EVENTS, SCREENS.PROFILE];
+
+// Con QR: el botón circular queda EN EL CENTRO de la barra (estilo Mercado Pago).
+const STUDENT_TABS_WITH_QR = [
   SCREENS.HOME,
   SCREENS.EVENTS,
   SCREENS.QR_SCANNER,
@@ -25,19 +39,28 @@ const TABS_WITH_QR_CENTER = [
   SCREENS.PROFILE,
 ];
 
+// Docente/preceptor/directivo/admin: no escanean ni generan QR
+// (el QR vive en la pantalla de la entrada).
+const STAFF_TABS = [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE];
+
+// El padre todavía no tiene pantallas propias de seguimiento del hijo.
+const PARENT_TABS = [SCREENS.PROFILE];
+
 export const TABS_BY_ROLE = {
-  alumno: [...TABS_WITH_QR_CENTER],
-  // docente y preceptor: no escanean ni generan QR (está en la pantalla de la entrada)
-  preceptor: [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE],
-  docente: [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE],
+  [ROLES.ALUMNO]: STUDENT_TABS_WITH_QR,
+  [ROLES.PROFESOR]: STAFF_TABS,
+  [ROLES.PRECEPTOR]: STAFF_TABS,
+  [ROLES.DIRECTIVO]: STAFF_TABS,
+  [ROLES.ADMIN]: STAFF_TABS,
+  [ROLES.PADRE]: PARENT_TABS,
 };
 
-export function hasQrScanner(role) {
-  return QR_FOR_ROLES.includes(role);
+export function hasQrScanner(rol) {
+  return normalizarRol(rol) === ROLES.ALUMNO;
 }
 
-export function tabsForRole(role) {
-  return TABS_BY_ROLE[role] || STUDENT_TABS; // rol desconocido: secciones mínimas
+export function tabsForRole(rol) {
+  return TABS_BY_ROLE[normalizarRol(rol)] || STUDENT_TABS; // rol desconocido: secciones mínimas
 }
 
 export function canTakeAttendance() {

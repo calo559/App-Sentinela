@@ -1,420 +1,292 @@
-// EditarPerfilScreen — edición del perfil para cualquier rol.
-// Se abre desde Perfil → "Editar perfil" (Stack, con botón atrás).
-// Los cambios se guardan en authService y quedan visibles al volver.
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  StyleSheet,
   ScrollView,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getActiveUser, updateProfile } from '../services/authService';
-import { InputField, PasswordField, SelectChips, MultiChips } from '../components/FormFields';
-import { materiasDe, divisionesDe } from '../utils/malla';
-
-const CURSOS = ['1°', '2°', '3°', '4°', '5°', '6°', '7°'];
+import { ROLES } from '../services/firestore';
+import { notify } from '../utils/notify';
+import { InputField } from '../components/FormFields';
 
 export default function EditarPerfilScreen({ navigation }) {
+  const { perfil, rol, actualizarPerfil } = useAuth();
   const { colors } = useTheme();
-  const active = useMemo(() => getActiveUser() || {}, []);
-  const role = active.role;
-  const esDocente = role === 'docente';
-  const esAlumnoOCurso = role === 'alumno' || role === 'preceptor';
 
-  const [nombre, setNombre] = useState(active.nombre || '');
-  const [apellido, setApellido] = useState(active.apellido || '');
-  const [dni, setDni] = useState(active.dni || '');
-  const [email, setEmail] = useState(active.email || '');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [nombre, setNombre] = useState(perfil?.nombre ?? '');
+  const [apellido, setApellido] = useState(perfil?.apellido ?? '');
+  const [telefono, setTelefono] = useState(perfil?.telefono ?? '');
+  const [titulo, setTitulo] = useState(perfil?.titulo ?? '');
+  const [errores, setErrores] = useState({});
+  const [guardando, setGuardando] = useState(false);
 
-  const [curso, setCurso] = useState(active.curso || '');
-  const [division, setDivision] = useState(active.division || '');
-  // Docente: puede tener varios cursos, cada uno con sus materias
-  const cursosGuardados = Array.isArray(active.cursos) ? active.cursos : [];
-  const [aniosDoc, setAniosDoc] = useState(() => {
-    if (cursosGuardados.length) return [...new Set(cursosGuardados.map((c) => c.curso))];
-    return active.anio ? [`${active.anio}°`] : [];
-  });
-  const [divSel, setDivSel] = useState(() => {
-    const out = {};
-    cursosGuardados.forEach((c) => {
-      out[c.curso] = [...new Set([...(out[c.curso] || []), String(c.division)])];
-    });
-    return out;
-  });
-  const [materiasPorCurso, setMateriasPorCurso] = useState(() => {
-    const out = {};
-    cursosGuardados.forEach((c) => {
-      out[`${c.curso}${c.division}`] = Array.isArray(c.materias) ? c.materias : [];
-    });
-    return out;
-  });
-  const [titulo, setTitulo] = useState(active.titulo || '');
+  const montado = useRef(true);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
 
-  const [errors, setErrors] = useState({});
-  const [status, setStatus] = useState(null); // { tipo: 'error', texto }
+  useEffect(() => {
+    if (!perfil) return;
+    setNombre(perfil.nombre ?? '');
+    setApellido(perfil.apellido ?? '');
+    setTelefono(perfil.telefono ?? '');
+    setTitulo(perfil.titulo ?? '');
+  }, [perfil]);
 
-  // Cursos elegidos: cada combinación año + división ("7°" + "2" → "7°2"),
-  // ordenados como en la escuela (1°→7°, división 1→5).
-  const aniosOrdenados = CURSOS.filter((anio) => aniosDoc.includes(anio));
-  const cursosDoc = aniosOrdenados.flatMap((anio) =>
-    (divSel[anio] || []).slice().sort().map((div) => ({
-      anio,
-      div,
-      etiqueta: `${anio}${div}`,
-    }))
+  const s = useMemo(
+    () =>
+      StyleSheet.create({
+        safe: { flex: 1, backgroundColor: colors.background },
+        topBar: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          paddingBottom: 6,
+        },
+        backButton: {
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+        },
+        topTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: colors.text },
+        spacer: { width: 40 },
+        fill: { flex: 1 },
+        scroll: { paddingHorizontal: 16, paddingBottom: 36, paddingTop: 8 },
+        intro: { fontSize: 12.5, lineHeight: 18, color: colors.textSecondary, marginBottom: 16 },
+        card: {
+          backgroundColor: colors.surface,
+          borderRadius: 18,
+          padding: 18,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        section: {
+          fontSize: 11,
+          fontWeight: '800',
+          letterSpacing: 1,
+          color: colors.textSecondary,
+          marginTop: 4,
+          marginBottom: 12,
+        },
+        readonlyBlock: { marginTop: 8 },
+        readonlyRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingVertical: 12,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        },
+        readonlyIcon: {
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          backgroundColor: colors.surfaceVariant,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        readonlyTexts: { flex: 1 },
+        readonlyLabel: { fontSize: 11, color: colors.textSecondary, letterSpacing: 0.6, textTransform: 'uppercase' },
+        readonlyValue: { fontSize: 14.5, fontWeight: '700', color: colors.text, marginTop: 2 },
+        save: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          backgroundColor: colors.primary,
+          paddingVertical: 14,
+          borderRadius: 12,
+          marginTop: 18,
+        },
+        saveDisabled: { opacity: 0.7 },
+        saveText: { fontSize: 15, fontWeight: '800', color: colors.onPrimary },
+        hint: { fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 16 },
+      }),
+    [colors]
   );
 
-  const toggleAnioDoc = (anio) => {
-    const quitaba = aniosDoc.includes(anio);
-    setAniosDoc(quitaba ? aniosDoc.filter((x) => x !== anio) : [...aniosDoc, anio]);
-    if (quitaba) {
-      // Quitar un año borra sus divisiones y las materias de sus cursos
-      const { [anio]: _sinAnio, ...divResto } = divSel;
-      setDivSel(divResto);
-      setMateriasPorCurso((prev) =>
-        Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith(anio)))
-      );
-    }
-    setErrors((prev) => ({ ...prev, aniosDoc: '' }));
+  const esAlumno = rol === ROLES.ALUMNO;
+  const esDocente = rol === ROLES.PROFESOR;
+
+  const validar = () => {
+    const err = {};
+    if (!nombre.trim()) err.nombre = 'El nombre es requerido';
+    if (!apellido.trim()) err.apellido = 'El apellido es requerido';
+    return err;
   };
 
-  const toggleDivisionDoc = (anio, div) => {
-    const actual = divSel[anio] || [];
-    const quitaba = actual.includes(div);
-    setDivSel({ ...divSel, [anio]: quitaba ? actual.filter((x) => x !== div) : [...actual, div] });
-    if (quitaba) {
-      const copia = { ...materiasPorCurso };
-      delete copia[`${anio}${div}`];
-      setMateriasPorCurso(copia);
-    }
-    setErrors((prev) => ({ ...prev, [`div_${anio}`]: '' }));
-  };
+  const handleSave = async () => {
+    if (guardando) return;
+    const err = validar();
+    setErrores(err);
+    if (Object.keys(err).length) return;
 
-  const toggleMateriaDoc = (etiqueta, materia) => {
-    const actual = materiasPorCurso[etiqueta] || [];
-    setMateriasPorCurso({
-      ...materiasPorCurso,
-      [etiqueta]: actual.includes(materia)
-        ? actual.filter((x) => x !== materia)
-        : [...actual, materia],
-    });
-    setErrors((prev) => ({ ...prev, [`materias_${etiqueta}`]: '' }));
-  };
+    const cambios = {
+      nombre: nombre.trim(),
+      apellido: apellido.trim(),
+      telefono: telefono.trim(),
+    };
+    if (esDocente) cambios.titulo = titulo.trim();
 
-  const validate = () => {
-    const e = {};
-    if (!nombre.trim()) e.nombre = 'El nombre es requerido';
-    if (!apellido.trim()) e.apellido = 'El apellido es requerido';
-    if (!dni.trim() || dni.length < 7) e.dni = 'Ingresá un DNI válido';
-    if (!email.trim() || !email.includes('@')) e.email = 'Ingresá un correo válido';
-    if (password && password.length < 6) e.password = 'Mínimo 6 caracteres';
-
-    if (esDocente) {
-      if (aniosDoc.length === 0) e.aniosDoc = 'Seleccioná al menos un año que dictés';
-      else
-        aniosDoc.forEach((anio) => {
-          if (!(divSel[anio] || []).length) e[`div_${anio}`] = `Elegí la división del ${anio}`;
-        });
-      cursosDoc.forEach((c) => {
-        if (!(materiasPorCurso[c.etiqueta] || []).length)
-          e[`materias_${c.etiqueta}`] = 'Elegí al menos una materia en este curso';
-      });
-      if (!titulo.trim()) e.titulo = 'El título es requerido';
-    } else if (esAlumnoOCurso) {
-      if (!curso) e.curso = 'Seleccioná un curso';
-      if (!division) e.division = 'Seleccioná una división';
-    }
-    return e;
-  };
-
-  const handleSave = () => {
-    const e = validate();
-    if (Object.keys(e).length) {
-      setErrors(e);
-      setStatus(null);
-      return;
-    }
-    setErrors({});
-
+    setGuardando(true);
     try {
-      const patch = {
-        nombre: nombre.trim(),
-        apellido: apellido.trim(),
-        dni: dni.trim(),
-        email: email.trim(),
-      };
-      if (password) patch.password = password; // vacío = no cambiar
+      await actualizarPerfil(cambios);
 
-      if (esDocente) {
-        patch.anio = (cursosDoc[0]?.anio ?? aniosDoc[0] ?? '').replace(/[^\d]/g, '');
-        patch.materias = [...new Set(cursosDoc.flatMap((c) => materiasPorCurso[c.etiqueta] || []))];
-        patch.cursos = cursosDoc.map((c) => ({
-          curso: c.anio,
-          division: c.div,
-          materias: materiasPorCurso[c.etiqueta] || [],
-        }));
-        patch.titulo = titulo.trim();
-      } else if (esAlumnoOCurso) {
-        patch.curso = curso;
-        patch.division = division;
-      }
-
-      updateProfile(patch);
-      navigation?.goBack?.(); // Perfil vuelve a renderizar con los datos nuevos
-    } catch (err) {
-      setStatus({ tipo: 'error', texto: err.message });
+      if (!montado.current) return;
+      setGuardando(false);
+      notify('Perfil actualizado', 'Tus datos se guardaron correctamente.');
+      navigation.goBack();
+    } catch (error) {
+      if (!montado.current) return;
+      setGuardando(false);
+      notify('No se pudo guardar', error?.message ?? 'Intentá de nuevo en unos segundos.');
     }
   };
 
-  const sectionLabel = (text) => <Text style={st.sectionLabel}>{text}</Text>;
+  const cursoActual = perfil?.cursoNombre ?? perfil?.curso ?? null;
+  const divisionActual = perfil?.division ?? null;
 
   return (
-    <View style={[st.container, { backgroundColor: colors.background }]}>
-      {/* Barra superior con botón atrás (igual que Configuración) */}
-      <View style={st.topBar}>
+    <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
+      <View style={s.topBar}>
         <TouchableOpacity
-          onPress={() => navigation?.goBack?.()}
-          style={st.backButton}
+          onPress={() => navigation.goBack()}
+          style={s.backButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <MaterialCommunityIcons name="chevron-left" size={26} color={colors.primary} />
+          <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[st.topTitle, { color: colors.text }]}>Editar perfil</Text>
+        <Text style={s.topTitle}>Editar perfil</Text>
+        <View style={s.spacer} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
-          contentContainerStyle={st.scroll}
+          contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[st.intro, { color: colors.textSecondary }]}>
-            Actualizá tus datos personales y académicos. Los cambios quedan guardados en tu cuenta.
+          <Text style={s.intro}>
+            Actualizá tus datos personales. Los cambios quedan guardados en tu cuenta institutional.
           </Text>
 
-          {/* Tarjeta de formulario (misma estética que Login / Registro) */}
-          <View style={st.card}>
-            {sectionLabel('DATOS PERSONALES')}
+          <View style={s.card}>
+            <Text style={s.section}>DATOS PERSONALES</Text>
+
             <InputField
               icon="account-outline"
               label="Nombre"
               placeholder="Ej: Ana"
               value={nombre}
-              onChangeText={setNombre}
-              errors={errors}
-              setErrors={setErrors}
-              errorKey="nombre"
+              onChangeText={(texto) => {
+                setNombre(texto);
+                setErrores((prev) => ({ ...prev, nombre: '' }));
+              }}
+              error={errores.nombre}
+              autoCapitalize="words"
             />
+
             <InputField
               icon="account-outline"
               label="Apellido"
               placeholder="Ej: Alumna"
               value={apellido}
-              onChangeText={setApellido}
-              errors={errors}
-              setErrors={setErrors}
-              errorKey="apellido"
-            />
-            <InputField
-              icon="account-details-outline"
-              label="DNI"
-              placeholder="Ej: 11111111"
-              keyboardType="number-pad"
-              maxLength={10}
-              value={dni}
-              onChangeText={setDni}
-              errors={errors}
-              setErrors={setErrors}
-              errorKey="dni"
-            />
-            <InputField
-              icon="email-outline"
-              label="Correo electrónico"
-              placeholder="ejemplo@escuela.edu"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-              errors={errors}
-              setErrors={setErrors}
-              errorKey="email"
-            />
-            <PasswordField
-              label="Nueva contraseña (opcional)"
-              placeholder="Dejar en blanco para no cambiarla"
-              value={password}
-              onChangeText={setPassword}
-              showPassword={showPassword}
-              onToggleShow={() => setShowPassword((v) => !v)}
-              errors={errors}
-              setErrors={setErrors}
-              errorKey="password"
+              onChangeText={(texto) => {
+                setApellido(texto);
+                setErrores((prev) => ({ ...prev, apellido: '' }));
+              }}
+              error={errores.apellido}
+              autoCapitalize="words"
             />
 
-            {/* Datos académicos según rol */}
-            {esAlumnoOCurso && (
-              <View>
-                {sectionLabel(role === 'preceptor' ? 'CURSO A CARGO' : 'DATOS ACADÉMICOS')}
-                <SelectChips
-                  label="Curso"
-                  options={CURSOS}
-                  value={curso}
-                  onSelect={setCurso}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="curso"
-                />
-                <SelectChips
-                  label="División"
-                  options={divisionesDe(curso)}
-                  value={division}
-                  onSelect={setDivision}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="division"
-                />
-              </View>
-            )}
+            <InputField
+              icon="phone-outline"
+              label="Teléfono"
+              placeholder="Ej: +54 9 11 5555 0000"
+              value={telefono}
+              onChangeText={setTelefono}
+              keyboardType="phone-pad"
+            />
 
-            {esDocente && (
-              <View>
-                {sectionLabel('DATOS DOCENTE')}
-                <MultiChips
-                  label="Años que dictás (podés elegir varios)"
-                  options={CURSOS}
-                  value={aniosDoc}
-                  onToggle={toggleAnioDoc}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="aniosDoc"
-                />
-                {aniosOrdenados.map((anio) => (
-                  <MultiChips
-                    key={`div-${anio}`}
-                    label={`Divisiones del ${anio} (las que existen)`}
-                    options={divisionesDe(anio)}
-                    value={divSel[anio] || []}
-                    onToggle={(div) => toggleDivisionDoc(anio, div)}
-                    errors={errors}
-                    setErrors={setErrors}
-                    errorKey={`div_${anio}`}
-                  />
-                ))}
-                {cursosDoc.map((c) => (
-                  <MultiChips
-                    key={c.etiqueta}
-                    label={`Materias del ${c.etiqueta}`}
-                    options={materiasDe(c.anio, c.div)}
-                    value={materiasPorCurso[c.etiqueta] || []}
-                    onToggle={(materia) => toggleMateriaDoc(c.etiqueta, materia)}
-                    errors={errors}
-                    setErrors={setErrors}
-                    errorKey={`materias_${c.etiqueta}`}
-                  />
-                ))}
-                <InputField
-                  icon="certificate"
-                  label="Título profesional"
-                  placeholder="Ej: Prof. de Matemática"
-                  value={titulo}
-                  onChangeText={setTitulo}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="titulo"
-                />
+            {esDocente ? (
+              <InputField
+                icon="certificate-outline"
+                label="Título profesional"
+                placeholder="Ej: Profesor de Matemática"
+                value={titulo}
+                onChangeText={setTitulo}
+                autoCapitalize="sentences"
+              />
+            ) : null}
+
+            {esAlumno ? (
+              <View style={s.readonlyBlock}>
+                <Text style={s.section}>DATOS ACADÉMICOS (SOLO LECTURA)</Text>
+
+                <View style={s.readonlyRow}>
+                  <View style={s.readonlyIcon}>
+                    <MaterialCommunityIcons name="school-outline" size={18} color={colors.primary} />
+                  </View>
+                  <View style={s.readonlyTexts}>
+                    <Text style={s.readonlyLabel}>Curso</Text>
+                    <Text style={s.readonlyValue}>{cursoActual ?? 'Sin curso asignado'}</Text>
+                  </View>
+                </View>
+
+                <View style={s.readonlyRow}>
+                  <View style={s.readonlyIcon}>
+                    <MaterialCommunityIcons name="door-open" size={18} color={colors.primary} />
+                  </View>
+                  <View style={s.readonlyTexts}>
+                    <Text style={s.readonlyLabel}>División</Text>
+                    <Text style={s.readonlyValue}>{divisionActual ?? 'Sin división asignada'}</Text>
+                  </View>
+                </View>
               </View>
-            )}
+            ) : null}
           </View>
 
           <TouchableOpacity
-            activeOpacity={0.85}
+            style={[s.save, guardando && s.saveDisabled]}
             onPress={handleSave}
-            style={[st.saveBtn, { backgroundColor: colors.primary }]}
+            disabled={guardando}
           >
-            <MaterialCommunityIcons
-              name="content-save-outline"
-              size={19}
-              color={colors.onPrimary || '#0B1628'}
-            />
-            <Text style={[st.saveText, { color: colors.onPrimary || '#0B1628' }]}>
-              Guardar cambios
-            </Text>
+            {guardando ? (
+              <ActivityIndicator size="small" color={colors.onPrimary} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="content-save-outline" size={19} color={colors.onPrimary} />
+                <Text style={s.saveText}>Guardar cambios</Text>
+              </>
+            )}
           </TouchableOpacity>
 
-          {status && (
-            <View style={st.statusRow}>
-              <MaterialCommunityIcons
-                name="alert-circle-outline"
-                size={15}
-                color={colors.error}
-              />
-              <Text style={[st.statusText, { color: colors.error }]}>{status.texto}</Text>
-            </View>
-          )}
-
-          <Text style={[st.hint, { color: colors.textSecondary }]}>
-            {esDocente
-              ? 'Tus materias definen qué notas e informes podés cargar en el Boletín.'
-              : 'Tu curso define las materias que ves en el Boletín.'}
+          <Text style={s.hint}>
+            {esAlumno
+              ? 'Tu curso y división los asigna la escuela. Si hay un error, comunicate con tu preceptor.'
+              : esDocente
+                ? 'Las materias y el año los asigna la dirección académica. Vos podés actualizar tu título.'
+                : 'Tu rol institucional y los cursos a cargo los asigna la dirección de la escuela.'}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
-
-const st = StyleSheet.create({
-  container: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 4,
-  },
-  backButton: { padding: 4, marginRight: 6 },
-  topTitle: { fontSize: 17, fontWeight: '700' },
-  scroll: { paddingHorizontal: 16, paddingBottom: 36 },
-  intro: { fontSize: 12.5, lineHeight: 18, marginBottom: 14 },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: '#5A6B80',
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  saveText: { fontSize: 15, fontWeight: '800' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  statusText: { fontSize: 12.5, fontWeight: '600', flex: 1 },
-  hint: { fontSize: 12, lineHeight: 17, marginTop: 14 },
-});
