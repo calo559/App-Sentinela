@@ -1,6 +1,7 @@
 export * from './helpers';
 export * as users from './users';
 export * as students from './students';
+export * as padres from './padres';
 export * as courses from './courses';
 export * as subjects from './subjects';
 export * as enrollments from './enrollments';

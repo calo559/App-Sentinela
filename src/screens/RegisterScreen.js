@@ -38,6 +38,12 @@ const ROLES_DISPONIBLES = [
     desc: 'Registro mi asistencia escaneando el QR de mi curso',
     icon: 'school-outline',
   },
+  {
+    key: ROLES.PADRE,
+    label: 'Padre/Madre',
+    desc: 'Sigo la asistencia de mi hijo o hija',
+    icon: 'account-supervisor-outline',
+  },
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,6 +57,7 @@ export default function RegisterScreen({ navigation }) {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [dni, setDni] = useState('');
+  const [dniHijo, setDniHijo] = useState('');
   const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -169,6 +176,8 @@ export default function RegisterScreen({ navigation }) {
       apellido: apellido.trim(),
       dni: dni.trim(),
       telefono: telefono.trim(),
+      rol,
+      dniHijo: rol === ROLES.PADRE ? dniHijo.trim() : '',
     };
 
     setEnviando(true);
@@ -273,6 +282,18 @@ export default function RegisterScreen({ navigation }) {
                   keyboardType="number-pad"
                   autoCorrect={false}
                 />
+
+                {rol === ROLES.PADRE ? (
+                  <InputField
+                    icon="account-child-outline"
+                    label="DNI del hijo/a (opcional)"
+                    placeholder="12345678"
+                    value={dniHijo}
+                    onChangeText={(texto) => setDniHijo(texto.replace(/\D/g, '').slice(0, 10))}
+                    keyboardType="number-pad"
+                    autoCorrect={false}
+                  />
+                ) : null}
 
                 <InputField
                   icon="phone-outline"

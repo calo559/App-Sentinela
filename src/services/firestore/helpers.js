@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 export const COLLECTIONS = {
   USERS: 'usuarios',
   STUDENTS: 'alumnos',
+  PADRES: 'padres',
   COURSES: 'cursos',
   SUBJECTS: 'materias',
   ENROLLMENTS: 'inscripciones',
@@ -26,6 +27,7 @@ export const ROLES = {
   PRECEPTOR: 'preceptor',
   PROFESOR: 'profesor',
   ALUMNO: 'alumno',
+  PADRE: 'padre',
 };
 
 export const ROLES_LIST = Object.values(ROLES);

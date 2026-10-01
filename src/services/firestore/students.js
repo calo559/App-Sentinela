@@ -1,3 +1,4 @@
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import {
   addDoc,
   collection,
@@ -8,6 +9,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -50,6 +52,46 @@ export const crearAlumno = async ({
   });
 
   return documento.id;
+};
+
+/**
+ * Alta publica de alumno (Opcion B): crea la cuenta de Authentication y el
+ * perfil en `alumnos/{uid}` (el ID del documento ES el uid). No escribe nada en
+ * `usuarios/`. El curso y el legajo los asigna la institucion despues; aca
+ * nacen en null y "" respectivamente, como exige la regla de `alumnos`.
+ */
+export const crearAlumnoPublico = async ({
+  email,
+  password,
+  nombre,
+  apellido,
+  dni = '',
+  telefono = '',
+}) => {
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  const { uid } = credential.user;
+
+  await updateProfile(credential.user, { displayName: `${nombre} ${apellido}`.trim() });
+
+  await setDoc(
+    documentRef(COLLECTIONS.STUDENTS, uid),
+    {
+      nombre,
+      apellido,
+      dni,
+      legajo: '',
+      email,
+      telefono,
+      cursoId: null,
+      activo: true,
+      usuarioId: uid,
+      creadoEn: serverTimestamp(),
+      actualizadoEn: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return uid;
 };
 
 export const obtenerAlumno = async (alumnoId) => {

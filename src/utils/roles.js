@@ -8,6 +8,7 @@ export const ROLE_INFO = {
   [ROLES.PRECEPTOR]: { key: ROLES.PRECEPTOR, label: 'Preceptor', icon: 'clipboard-text-outline' },
   [ROLES.PROFESOR]: { key: ROLES.PROFESOR, label: 'Docente', icon: 'human-male-board' },
   [ROLES.ALUMNO]: { key: ROLES.ALUMNO, label: 'Alumno', icon: 'school-outline' },
+  [ROLES.PADRE]: { key: ROLES.PADRE, label: 'Padre/Madre', icon: 'account-supervisor-outline' },
 };
 
 // Compatibilidad con el repo original, que usaba `docente`.
@@ -36,12 +37,20 @@ const STUDENT_TABS_WITH_QR = [
 
 const STAFF_TABS = [SCREENS.HOME, SCREENS.EVENTS, SCREENS.BOLETIN, SCREENS.PROFILE];
 
+// El padre todavia no tiene pantallas propias de seguimiento del hijo. Por ahora
+// solo ve su perfil (estructura minima y segura). La entrada es EXPLICITA para
+// que `padre` NO herede las pestanas del alumno por el fallback de
+// `tabsForRole`. Falta implementar: vista de asistencia/notas del hijo y
+// notificaciones.
+const PARENT_TABS = [SCREENS.PROFILE];
+
 export const TABS_BY_ROLE = {
   [ROLES.ALUMNO]: STUDENT_TABS_WITH_QR,
   [ROLES.PROFESOR]: STAFF_TABS,
   [ROLES.PRECEPTOR]: STAFF_TABS,
   [ROLES.DIRECTIVO]: STAFF_TABS,
   [ROLES.ADMIN]: STAFF_TABS,
+  [ROLES.PADRE]: PARENT_TABS,
 };
 
 export function hasQrScanner(rol) {

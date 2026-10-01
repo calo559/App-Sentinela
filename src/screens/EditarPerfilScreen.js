@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { ROLES, students } from '../services/firestore';
+import { ROLES } from '../services/firestore';
 import { notify } from '../utils/notify';
 import { InputField } from '../components/FormFields';
 
@@ -148,18 +148,6 @@ export default function EditarPerfilScreen({ navigation }) {
     setGuardando(true);
     try {
       await actualizarPerfil(cambios);
-
-      if (esAlumno && perfil?.alumnoId) {
-        try {
-          await students.actualizarAlumno(perfil.alumnoId, {
-            nombre: cambios.nombre,
-            apellido: cambios.apellido,
-            telefono: cambios.telefono,
-          });
-        } catch (error) {
-          console.warn('No se pudo sincronizar el legajo del alumno', error?.message);
-        }
-      }
 
       if (!montado.current) return;
       setGuardando(false);

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as users from '../services/firestore/users';
-import { courses, students, subjects } from '../services/firestore';
+import { courses, padres, students, subjects } from '../services/firestore';
 import { ROLES } from '../services/firestore/helpers';
 import { normalizarRol } from '../utils/roles';
 
@@ -24,7 +24,28 @@ export function AuthProvider({ children }) {
       return null;
     }
 
+    // Resolucion compatible con los dos modelos, en este orden:
+    //   1. usuarios/{uid} -> staff o cuenta legacy. SIEMPRE tiene prioridad.
+    //   2. alumnos/{uid}  -> alumno nuevo (Opcion B); su `alumnoId` logico es el uid.
+    //   3. padres/{uid}   -> padre/madre nuevo (Opcion B).
+    // Si no existe ninguno se conserva el perfil minimo sin rol de antes.
     let base = await users.obtenerUsuario(uid);
+    let alumnoPublico = null;
+
+    if (!base) {
+      alumnoPublico = await students.obtenerAlumno(uid);
+      if (alumnoPublico) {
+        base = { ...alumnoPublico, uid, rol: ROLES.ALUMNO, alumnoId: uid };
+      }
+    }
+
+    if (!base) {
+      const padre = await padres.obtenerPadre(uid);
+      if (padre) {
+        base = { ...padre, uid, rol: ROLES.PADRE };
+      }
+    }
+
     if (!base) {
       base = {
         uid,
@@ -41,7 +62,9 @@ export function AuthProvider({ children }) {
     const rol = normalizarRol(base.rol);
 
     if (rol === ROLES.ALUMNO && base.alumnoId) {
-      const alumno = await students.obtenerAlumno(base.alumnoId);
+      // `alumnoPublico` ya trae la ficha cuando el perfil vive en alumnos/{uid};
+      // para una cuenta legacy recien la buscamos por su `alumnoId` enlazado.
+      const alumno = alumnoPublico ?? (await students.obtenerAlumno(base.alumnoId));
       if (alumno) {
         enriquecido.alumno = alumno;
         enriquecido.cursoId = alumno.cursoId;
@@ -89,21 +112,23 @@ export function AuthProvider({ children }) {
   const entrar = useCallback((email, password) => users.login(email, password), []);
 
   const registrar = useCallback(
-    async ({ email, password, nombre, apellido, dni, telefono }) => {
-      // Alta publica: SOLO crea el documento de usuarios con rol alumno y sin
-      // vinculacion. No se escribe nada en alumnos/: la ficha y su curso los
-      // asigna la institucion despues, con `users.vincularAlumnoCuenta` (solo
-      // administrador). El alumno no puede elegir un curso ni reclamar la ficha
-      // de otro.
-      const uid = await users.crearUsuario({
-        email,
-        password,
-        nombre,
-        apellido,
-        dni,
-        telefono,
-        rol: ROLES.ALUMNO,
-      });
+    async ({ email, password, nombre, apellido, dni, telefono, rol, dniHijo }) => {
+      // Alta publica separada por tipo (Opcion B):
+      //   alumno -> Authentication + alumnos/{uid}
+      //   padre  -> Authentication + padres/{uid}
+      // Las cuentas staff siguen usando usuarios/{uid} (via administrativa).
+      // Ninguna rama escribe en `usuarios/` para alumno/padre: no hay documentos
+      // duplicados, y el rol se deduce de la coleccion donde vive el perfil.
+      const rolSolicitado = normalizarRol(rol) || ROLES.ALUMNO;
+
+      let uid;
+      if (rolSolicitado === ROLES.PADRE) {
+        uid = await padres.crearPadrePublico({ email, password, nombre, apellido, dni, telefono, dniHijo });
+      } else if (rolSolicitado === ROLES.ALUMNO) {
+        uid = await students.crearAlumnoPublico({ email, password, nombre, apellido, dni, telefono });
+      } else {
+        uid = await users.crearUsuario({ email, password, nombre, apellido, dni, telefono, rol: rolSolicitado });
+      }
 
       await cargarPerfil(uid, auth.currentUser);
       return uid;
@@ -123,10 +148,39 @@ export function AuthProvider({ children }) {
     async (cambios) => {
       const uid = auth.currentUser?.uid;
       if (!uid) throw new Error('No hay una sesión activa');
-      await users.actualizarUsuario(uid, cambios);
+
+      // Cada perfil se guarda donde vive: usuarios (staff/legacy), alumnos/{uid}
+      // (alumno nuevo) o padres/{uid} (padre nuevo). Para el alumno legacy se
+      // sigue sincronizando su ficha separada enlazada por `alumnoId`, como
+      // antes; el alumno nuevo ya es la propia ficha, asi que no hay segundo
+      // documento que actualizar.
+      const usuario = await users.obtenerUsuario(uid);
+      const rol = normalizarRol(usuario?.rol ?? perfil?.rol);
+
+      if (usuario) {
+        await users.actualizarUsuario(uid, cambios);
+        if (rol === ROLES.ALUMNO && usuario.alumnoId) {
+          try {
+            await students.actualizarAlumno(usuario.alumnoId, {
+              nombre: cambios.nombre,
+              apellido: cambios.apellido,
+              telefono: cambios.telefono,
+            });
+          } catch (error) {
+            console.warn('No se pudo sincronizar el legajo del alumno', error?.message);
+          }
+        }
+      } else if (rol === ROLES.ALUMNO) {
+        await students.actualizarAlumno(uid, cambios);
+      } else if (rol === ROLES.PADRE) {
+        await padres.actualizarPadre(uid, cambios);
+      } else {
+        await users.actualizarUsuario(uid, cambios);
+      }
+
       return recargarPerfil();
     },
-    [recargarPerfil]
+    [perfil, recargarPerfil]
   );
 
   const value = useMemo(
