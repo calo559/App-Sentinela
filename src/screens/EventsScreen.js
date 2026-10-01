@@ -193,6 +193,8 @@ export default function EventsScreen({ navigation }) {
 
   const activeUser = getActiveUser();
   const esAlumno = activeUser?.role === 'alumno';
+  // Filtrar alumnos y generar reportes: solo docentes y preceptores
+  const esStaff = activeUser?.role === 'docente' || activeUser?.role === 'preceptor';
   // El alumno/preceptor ve solo SU curso; el docente (sin curso asignado) ve todos
   const myCourse =
     activeUser?.curso && activeUser?.division ? `${activeUser.curso}${activeUser.division}` : null;
@@ -630,6 +632,7 @@ export default function EventsScreen({ navigation }) {
         </View>
       </Card>
 
+      {esStaff && (
       <View style={s.filtersContainer}>
         <View style={s.searchBox}>
           <TextInput
@@ -699,6 +702,7 @@ export default function EventsScreen({ navigation }) {
           ))}
         </View>
       </View>
+      )}
     </>
     );
   };
@@ -765,6 +769,7 @@ export default function EventsScreen({ navigation }) {
         }}
       />
 
+      {esStaff && (
       <TouchableOpacity
         style={s.reportButton}
         onPress={async () => {
@@ -780,6 +785,7 @@ export default function EventsScreen({ navigation }) {
       >
         <Text style={s.reportButtonText}>📊 Generar reporte del día</Text>
       </TouchableOpacity>
+      )}
     </View>
   );
 }
