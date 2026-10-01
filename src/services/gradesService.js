@@ -1,14 +1,19 @@
 // Notas e informes de avance cargados por los docentes (almacenamiento local).
 //
-//   Notas:     `${curso}|${materia}|c${cuatri}|${alumnoId}`  ->  4..10 | null
-//   Informes:  `${curso}|c${cuatri}|${alumnoId}`             ->  { clasif, desc, autor, materia, fecha }
+//   Notas:     `${curso}|${materia}|c${cuatri}|${tipo}|${alumnoId}`  ->  1..10 | null
+//              tipo: 'tp' (trabajos prácticos) | 'ev' (evaluaciones) | 'ex' (exposiciones)
+//   Informes:  `${curso}|c${cuatri}|${materia}|${alumnoId}`          ->  { clasif, desc, autor, materia, fecha }
 //
 // alumnoId = correo del alumno (ej: alumno@escuela.edu).
+// Los formatos viejos (notas sin tipo, informes sin materia) se migran al cargar,
+// así lo que ya se cargó sigue visible.
 
 import { getActiveUser } from './authService';
 
 const NOTAS_KEY = 'sia_notas';
 const INFORMES_KEY = 'sia_informes';
+
+const TIPOS = ['tp', 'ev', 'ex'];
 
 const hasStorage = () => typeof window !== 'undefined' && !!window.localStorage;
 
@@ -38,6 +43,19 @@ function loadNotas() {
   if (memNotas) return memNotas;
   const stored = read(NOTAS_KEY);
   memNotas = stored && typeof stored === 'object' ? stored : {};
+  // Migración: claves viejas sin tipo `${curso}|${materia}|c${cuatri}|${alumno}`
+  // pasan a Evaluaciones (así lo cargado antes no se pierde).
+  let migro = false;
+  Object.keys(memNotas).forEach((k) => {
+    const p = k.split('|');
+    if (p.length === 4) {
+      const nueva = `${p[0]}|${p[1]}|${p[2]}|ev|${p[3]}`;
+      if (!(nueva in memNotas)) memNotas[nueva] = memNotas[k];
+      delete memNotas[k];
+      migro = true;
+    }
+  });
+  if (migro) write(NOTAS_KEY, memNotas);
   return memNotas;
 }
 
@@ -45,51 +63,72 @@ function loadInformes() {
   if (memInformes) return memInformes;
   const stored = read(INFORMES_KEY);
   memInformes = stored && typeof stored === 'object' ? stored : {};
+  // Migración: claves viejas sin materia `${curso}|c${cuatri}|${alumno}`
+  // se rearmán con la materia que tenía guardada el informe.
+  let migro = false;
+  Object.keys(memInformes).forEach((k) => {
+    const p = k.split('|');
+    if (p.length === 3) {
+      const data = memInformes[k] || {};
+      const materia = data.materia || 'General';
+      const nueva = `${p[0]}|${p[1]}|${materia}|${p[2]}`;
+      if (!(nueva in memInformes)) memInformes[nueva] = data;
+      delete memInformes[k];
+      migro = true;
+    }
+  });
+  if (migro) write(INFORMES_KEY, memInformes);
   return memInformes;
 }
 
-const notaKey = (cursoDiv, materia, cuatri, alumnoId) =>
-  `${cursoDiv}|${materia}|c${cuatri}|${alumnoId}`;
+const notaKey = (cursoDiv, materia, cuatri, tipo, alumnoId) =>
+  `${cursoDiv}|${materia}|c${cuatri}|${tipo}|${alumnoId}`;
 
-const informeKey = (cursoDiv, cuatri, alumnoId) => `${cursoDiv}|c${cuatri}|${alumnoId}`;
+const informeKey = (cursoDiv, cuatri, materia, alumnoId) =>
+  `${cursoDiv}|c${cuatri}|${materia}|${alumnoId}`;
 
 /* ------------------------------------------------------------------ NOTAS */
 
-/** valor: número 4..10 o null (sin nota). */
-export function setNota({ cursoDiv, materia, cuatri, alumnoId }, valor) {
+/** valor: número 1..10 o null (sin nota). tipo: 'tp' | 'ev' | 'ex'. */
+export function setNota({ cursoDiv, materia, cuatri, alumnoId, tipo }, valor) {
   const notas = loadNotas();
-  notas[notaKey(cursoDiv, materia, cuatri, alumnoId)] = valor;
+  notas[notaKey(cursoDiv, materia, cuatri, tipo, alumnoId)] = valor;
   memNotas = notas;
   write(NOTAS_KEY, notas);
 }
 
-export function getNota({ cursoDiv, materia, cuatri, alumnoId }) {
+export function getNota({ cursoDiv, materia, cuatri, tipo, alumnoId }) {
   const notas = loadNotas();
-  const k = notaKey(cursoDiv, materia, cuatri, alumnoId);
+  const k = notaKey(cursoDiv, materia, cuatri, tipo, alumnoId);
   return k in notas ? notas[k] : undefined; // undefined = nunca cargada
 }
 
-/** { [alumnoId]: nota } de una materia en un curso */
+/** { [alumnoId]: { tp, ev, ex } } de una materia en un curso */
 export function getNotasMateria({ cursoDiv, materia, cuatri }) {
   const notas = loadNotas();
   const prefijo = `${cursoDiv}|${materia}|c${cuatri}|`;
   const out = {};
   Object.keys(notas).forEach((k) => {
-    if (k.startsWith(prefijo)) out[k.slice(prefijo.length)] = notas[k];
+    if (!k.startsWith(prefijo)) return;
+    const [tipo, alumnoId] = k.slice(prefijo.length).split('|');
+    if (!TIPOS.includes(tipo) || !alumnoId) return;
+    out[alumnoId] = { ...(out[alumnoId] || {}), [tipo]: notas[k] };
   });
   return out;
 }
 
-/** { [materia]: nota } de un alumno en un curso */
+/** { [materia]: { tp, ev, ex } } de un alumno en un curso */
 export function getNotasAlumno({ cursoDiv, cuatri, alumnoId }) {
   const notas = loadNotas();
-  const sufijo = `|c${cuatri}|${alumnoId}`;
   const out = {};
   Object.keys(notas).forEach((k) => {
-    if (k.startsWith(`${cursoDiv}|`) && k.endsWith(sufijo)) {
-      const materia = k.slice(cursoDiv.length + 1, k.length - sufijo.length);
-      out[materia] = notas[k];
-    }
+    if (!k.startsWith(`${cursoDiv}|`)) return;
+    // [materia, c#, tipo, alumno]
+    const partes = k.slice(cursoDiv.length + 1).split('|');
+    if (partes.length !== 4) return;
+    const [materia, cu, tipo, id] = partes;
+    if (cu !== `c${cuatri}` || id !== alumnoId || !TIPOS.includes(tipo)) return;
+    out[materia] = { ...(out[materia] || {}), [tipo]: notas[k] };
   });
   return out;
 }
@@ -97,21 +136,35 @@ export function getNotasAlumno({ cursoDiv, cuatri, alumnoId }) {
 /* -------------------------------------------------------------- INFORMES */
 
 /** data: { clasif: 'TED'|'TEP'|'TEA', desc, autor, materia, fecha } */
-export function setInforme({ cursoDiv, cuatri, alumnoId }, data) {
+export function setInforme({ cursoDiv, cuatri, materia, alumnoId }, data) {
   const informes = loadInformes();
-  informes[informeKey(cursoDiv, cuatri, alumnoId)] = data;
+  informes[informeKey(cursoDiv, cuatri, materia, alumnoId)] = data;
   memInformes = informes;
   write(INFORMES_KEY, informes);
 }
 
-export function getInforme({ cursoDiv, cuatri, alumnoId }) {
-  return loadInformes()[informeKey(cursoDiv, cuatri, alumnoId)] || null;
+export function getInforme({ cursoDiv, cuatri, materia, alumnoId }) {
+  return loadInformes()[informeKey(cursoDiv, cuatri, materia, alumnoId)] || null;
 }
 
-/** { [alumnoId]: informe } de todo un curso */
-export function getInformesCurso({ cursoDiv, cuatri }) {
+/** { [materia]: informe } de un alumno en un curso (lo ve el alumno) */
+export function getInformesAlumno({ cursoDiv, cuatri, alumnoId }) {
   const informes = loadInformes();
-  const prefijo = `${cursoDiv}|c${cuatri}|`;
+  const out = {};
+  Object.keys(informes).forEach((k) => {
+    const partes = k.split('|'); // [curso, c#, materia, alumno]
+    if (partes.length !== 4) return;
+    const [cur, cu, materia, id] = partes;
+    if (cur !== cursoDiv || cu !== `c${cuatri}` || id !== alumnoId) return;
+    out[materia] = informes[k];
+  });
+  return out;
+}
+
+/** { [alumnoId]: informe } de UNA materia de todo el curso (lo ve el docente) */
+export function getInformesMateria({ cursoDiv, cuatri, materia }) {
+  const informes = loadInformes();
+  const prefijo = `${cursoDiv}|c${cuatri}|${materia}|`;
   const out = {};
   Object.keys(informes).forEach((k) => {
     if (k.startsWith(prefijo)) out[k.slice(prefijo.length)] = informes[k];

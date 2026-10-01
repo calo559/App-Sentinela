@@ -1,7 +1,9 @@
 // CargaNotas — sección del docente dentro del Boletín:
 //   1) elige la materia que dicta en ese curso,
-//   2) carga la nota de cada alumno (se guarda al escribir),
-//   3) por alumno, arma el informe del cuatrimestre: TED / TEP / TEA + descripción.
+//   2) carga/edita las notas de cada alumno en tres columnas:
+//      TP (trabajos prácticos) · Evaluaciones · Exposiciones (se guarda al escribir),
+//   3) por alumno, arma el informe de avance de ESA materia: TED / TEP / TEA + descripción
+//      (los rangos numéricos solo los ve el docente; el alumno ve la sigla y la descripción).
 import { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,10 +13,10 @@ import {
   alumnosDeCurso,
   getNotasMateria,
   setNota,
-  getInformesCurso,
+  getInformesMateria,
   setInforme,
 } from '../services/gradesService';
-import { materiasDe, etiquetaCurso, INFORME_OPCIONES } from '../utils/malla';
+import { materiasDe, etiquetaCurso, INFORME_OPCIONES, TIPOS_NOTA } from '../utils/malla';
 
 export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }) {
   const { colors } = useTheme();
@@ -25,9 +27,9 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
   const alumnos = useMemo(() => alumnosDeCurso(cursoDiv), [cursoDiv]);
 
   const [materia, setMateria] = useState(disponibles[0] || null);
-  const [notas, setNotas] = useState({});        // alumnoId -> '7' | ''
-  const [invalidas, setInvalidas] = useState({}); // alumnoId -> true si la nota no es válida
-  const [informes, setInformes] = useState({});   // alumnoId -> informe guardado
+  const [notas, setNotas] = useState({});        // alumnoId -> { tp: '8', ev: '', ex: '' }
+  const [invalidas, setInvalidas] = useState({}); // `${alumnoId}.${tipo}` -> true si no es válida
+  const [informes, setInformes] = useState({});   // alumnoId -> informe guardado de ESTA materia
   const [abierto, setAbierto] = useState(null);   // alumnoId con el informe abierto
   const [clasif, setClasif] = useState(null);
   const [desc, setDesc] = useState('');
@@ -56,26 +58,32 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
     const guardadas = getNotasMateria({ cursoDiv, materia, cuatri });
     const mapa = {};
     Object.keys(guardadas).forEach((id) => {
-      mapa[id] = guardadas[id] == null ? '' : String(guardadas[id]);
+      const comp = guardadas[id] || {};
+      mapa[id] = {
+        tp: comp.tp == null ? '' : String(comp.tp),
+        ev: comp.ev == null ? '' : String(comp.ev),
+        ex: comp.ex == null ? '' : String(comp.ex),
+      };
     });
     setNotas(mapa);
     setInvalidas({});
-    setInformes(getInformesCurso({ cursoDiv, cuatri }));
+    setInformes(getInformesMateria({ cursoDiv, cuatri, materia }));
   }, [cursoDiv, materia, cuatri]);
 
-  const onChangeNota = (id, texto) => {
+  const onChangeNota = (id, tipo, texto) => {
     const limpio = String(texto).replace(/[^0-9]/g, '').slice(0, 2);
-    setNotas((prev) => ({ ...prev, [id]: limpio }));
+    setNotas((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [tipo]: limpio } }));
 
+    const marca = `${id}.${tipo}`;
     if (limpio === '') {
-      setInvalidas((prev) => ({ ...prev, [id]: false }));
-      setNota({ cursoDiv, materia, cuatri, alumnoId: id }, null);
+      setInvalidas((prev) => ({ ...prev, [marca]: false }));
+      setNota({ cursoDiv, materia, cuatri, alumnoId: id, tipo }, null);
       return;
     }
     const n = parseInt(limpio, 10);
     const invalida = n < 1 || n > 10;
-    setInvalidas((prev) => ({ ...prev, [id]: invalida }));
-    if (!invalida) setNota({ cursoDiv, materia, cuatri, alumnoId: id }, n);
+    setInvalidas((prev) => ({ ...prev, [marca]: invalida }));
+    if (!invalida) setNota({ cursoDiv, materia, cuatri, alumnoId: id, tipo }, n);
   };
 
   const toggleInforme = (alumno) => {
@@ -100,7 +108,7 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
       materia,
       fecha: new Date().toLocaleDateString('es-AR'),
     };
-    setInforme({ cursoDiv, cuatri, alumnoId: alumno.id }, data);
+    setInforme({ cursoDiv, cuatri, materia, alumnoId: alumno.id }, data);
     setInformes((prev) => ({ ...prev, [alumno.id]: data }));
     setAbierto(null);
     setClasif(null);
@@ -148,18 +156,41 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
           flexDirection: 'row',
           alignItems: 'center',
           paddingVertical: 9,
+          gap: 6,
         },
-        alumnoName: { fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 10 },
+        alumnoName: { fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 6 },
+        tableHead: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingBottom: 4,
+          marginBottom: 2,
+        },
+        headName: {
+          flex: 1,
+          paddingRight: 6,
+          fontSize: 9.5,
+          fontWeight: '800',
+          letterSpacing: 0.6,
+        },
+        headTipo: {
+          width: 56,
+          textAlign: 'center',
+          fontSize: 9.5,
+          fontWeight: '800',
+          letterSpacing: 0.4,
+        },
         notaInput: {
           width: 56,
           borderWidth: 1,
           borderRadius: 10,
           paddingVertical: 6,
-          paddingHorizontal: 8,
+          paddingHorizontal: 4,
           fontSize: 15,
           fontWeight: '700',
           textAlign: 'center',
         },
+        rangoHint: { fontSize: 11, lineHeight: 16, marginTop: 2 },
         hint: { fontSize: 11, marginTop: 8 },
         informeHead: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
         badge: {
@@ -277,32 +308,48 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
 
         <View style={[s.divider, { backgroundColor: colors.border }]} />
 
+        {/* Encabezado de columnas: TP | Evaluaciones | Exposiciones */}
+        <View style={s.tableHead}>
+          <Text style={[s.headName, { color: colors.textSecondary }]}>ALUMNO</Text>
+          {TIPOS_NOTA.map((t) => (
+            <Text key={t.key} style={[s.headTipo, { color: colors.textSecondary }]}>
+              {t.corto}
+            </Text>
+          ))}
+        </View>
+
         {alumnos.map((al) => (
           <View key={al.id} style={s.alumnoRow}>
             <Text style={[s.alumnoName, { color: colors.text }]} numberOfLines={1}>
               {al.nombre}
             </Text>
-            <TextInput
-              value={notas[al.id] ?? ''}
-              onChangeText={(t) => onChangeNota(al.id, t)}
-              keyboardType="number-pad"
-              maxLength={2}
-              placeholder="—"
-              placeholderTextColor={colors.textSecondary}
-              style={[
-                s.notaInput,
-                {
-                  borderColor: invalidas[al.id] ? colors.error : colors.border,
-                  backgroundColor: colors.surfaceVariant,
-                  color: invalidas[al.id] ? colors.error : colors.text,
-                },
-              ]}
-            />
+            {TIPOS_NOTA.map((t) => {
+              const marca = `${al.id}.${t.key}`;
+              return (
+                <TextInput
+                  key={t.key}
+                  value={notas[al.id]?.[t.key] ?? ''}
+                  onChangeText={(txt) => onChangeNota(al.id, t.key, txt)}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="—"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    s.notaInput,
+                    {
+                      borderColor: invalidas[marca] ? colors.error : colors.border,
+                      backgroundColor: colors.surfaceVariant,
+                      color: invalidas[marca] ? colors.error : colors.text,
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
         ))}
 
         <Text style={[s.hint, { color: colors.textSecondary }]}>
-          Nota de 1 a 10 · se guarda automáticamente · vacío = sin nota
+          Cada columna es 1 a 10 · se guarda automáticamente · vacío = sin nota
         </Text>
       </View>
 
@@ -400,6 +447,11 @@ export default function CargaNotas({ curso, division, cuatri, misMaterias = [] }
                       );
                     })}
                   </View>
+                  <Text style={[s.rangoHint, { color: colors.textSecondary }]}>
+                    {`Referencia para vos (el alumno NO ve los números): ${INFORME_OPCIONES.map(
+                      (o) => `${o.label} ${o.rango}`
+                    ).join(' · ')}`}
+                  </Text>
 
                   <Text style={[s.panelLabel, { color: colors.textSecondary }]}>
                     DESCRIPCIÓN

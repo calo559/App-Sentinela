@@ -1,13 +1,20 @@
-import { View, Text, FlatList, TouchableOpacity, TextInput, Share } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, Share, Modal, ScrollView } from 'react-native';
 import { notify } from '../utils/notify';
 import { useState, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import typography from '../theme/typography';
 import Card from '../components/Card';
 import Header from '../components/Header';
-import Calendar from '../components/Calendar';
+import Calendar, { todayKey } from '../components/Calendar';
 import { getActiveUser } from '../services/authService';
 import { getToday } from '../services/attendanceService';
+import {
+  TIPOS_AVISO,
+  tiposPara,
+  crearAviso,
+  listarAvisos,
+  borrarAviso,
+} from '../services/avisosService';
 
 // Fechas relativas a hoy para que siempre se vean en el año/mes actual
 const daysAgo = (n) => {
@@ -224,11 +231,20 @@ export default function EventsScreen({ navigation }) {
     ...attendanceHistory.filter((item) => !myCourse || item.course === myCourse),
   ];
 
-  // Inicial seguro aunque el nombre venga vacío
-  const initial = (name) => {
-    const first = String(name ?? '').trim().charAt(0);
-    return first ? first.toUpperCase() : '?';
+  // La lista se toma por APELLIDO: el filtro de letras, el agrupado y el orden
+  // usan la inicial del apellido ("Ana Martínez" → M), no la del nombre.
+  const apellidoDe = (name) => {
+    const partes = String(name ?? '').trim().split(/\s+/);
+    return partes[partes.length - 1] || '';
   };
+  const initial = (name) => {
+    const ap = apellidoDe(name);
+    return ap ? ap.charAt(0).toUpperCase() : '?';
+  };
+  // Orden alfabético de apellidos (como se toma la lista real); mismo apellido → nombre
+  const porApellido = (a, b) =>
+    apellidoDe(a.student).localeCompare(apellidoDe(b.student), 'es') ||
+    a.student.localeCompare(b.student, 'es');
 
   const filteredHistory = courseRecords.filter(item => {
     const matchesSearch = item.student.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -245,9 +261,9 @@ export default function EventsScreen({ navigation }) {
     return matchesSearch && matchesStatus && matchesDate && matchesLetter;
   });
 
-  // Agrupado alfabéticamente por inicial del alumno
+  // Agrupado alfabético por inicial del APELLIDO
   const grouped = (() => {
-    const sorted = [...filteredHistory].sort((a, b) => a.student.localeCompare(b.student, 'es'));
+    const sorted = [...filteredHistory].sort(porApellido);
     const out = [];
     let lastLetter = null;
     sorted.forEach((item) => {
@@ -301,6 +317,47 @@ export default function EventsScreen({ navigation }) {
   };
 
   const stats = getStatsForDate(selectedDate);
+
+  /* ------------------------------------------- Notificaciones (avisos) */
+  const [avisos, setAvisos] = useState(() => listarAvisos());
+  const [modalAviso, setModalAviso] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [form, setForm] = useState({
+    tipo: '',
+    titulo: '',
+    fecha: todayKey(),
+    nota: '',
+    detalle: '',
+  });
+
+  // Tipos que publica cada rol: docente (evaluación/exposición/TP) o preceptor
+  const tiposRol = esStaff ? tiposPara(activeUser?.role) : [];
+  const tipoActual = TIPOS_AVISO[form.tipo];
+
+  const abrirModalAviso = () => {
+    setForm({
+      tipo: tiposRol[0]?.key || '',
+      titulo: '',
+      fecha: todayKey(),
+      nota: '',
+      detalle: '',
+    });
+    setFormError('');
+    setModalAviso(true);
+  };
+
+  const publicarAviso = () => {
+    const res = crearAviso(form);
+    if (!res.ok) {
+      setFormError(res.error);
+      return;
+    }
+    setAvisos(listarAvisos());
+    setModalAviso(false);
+    notify('Aviso publicado', `"${res.aviso.titulo}" ya aparece en Notificaciones`, [
+      { text: 'OK' },
+    ]);
+  };
 
   const s = useMemo(() => ({
     container: { flex: 1, backgroundColor: colors.background },
@@ -392,6 +449,7 @@ export default function EventsScreen({ navigation }) {
     },
     statusFilters: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
     },
     filterChip: {
@@ -568,6 +626,138 @@ export default function EventsScreen({ navigation }) {
       color: colors.onPrimary || colors.white,
       fontWeight: 'bold',
     },
+
+    // Notificaciones (avisos de docentes y preceptores)
+    avisosSection: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+    },
+    avisosHeadRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginBottom: 8,
+    },
+    avisosTitle: {
+      ...typography.h3,
+      color: colors.text,
+      fontWeight: '700',
+    },
+    publicarBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    publicarBtnText: {
+      color: colors.onPrimary || colors.white,
+      ...typography.button,
+      fontSize: 12,
+    },
+    avisosEmpty: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      paddingVertical: 6,
+    },
+    avisoCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderLeftWidth: 4,
+      borderRadius: 14,
+      padding: 12,
+      marginBottom: 8,
+    },
+    avisoHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    avisoIcon: { fontSize: 16 },
+    avisoTitulo: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.text },
+    avisoChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    avisoChipText: { fontSize: 10, fontWeight: '800' },
+    avisoDelete: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '700',
+      paddingHorizontal: 4,
+    },
+    avisoMeta: { fontSize: 11, color: colors.textSecondary, marginTop: 6 },
+    avisoDetalle: { fontSize: 12.5, color: colors.text, marginTop: 6, lineHeight: 18 },
+    avisoNota: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: colors.primary,
+      marginTop: 4,
+    },
+
+    // Modal publicar aviso
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'flex-end',
+    },
+    modalCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 16,
+      maxHeight: '90%',
+    },
+    fieldLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontWeight: '700',
+      marginTop: 12,
+      marginBottom: 6,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    input: {
+      backgroundColor: colors.surfaceVariant,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      ...typography.body,
+      fontSize: 14,
+      color: colors.text,
+    },
+    inputMultiline: { minHeight: 70, textAlignVertical: 'top' },
+    tipoChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    tipoChip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceVariant,
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    tipoChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    tipoChipText: { fontSize: 12, fontWeight: '700', color: colors.text },
+    tipoChipTextActive: { color: colors.onPrimary || colors.white },
+    formError: { ...typography.caption, color: colors.error, marginTop: 10 },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    cancelBtn: {
+      flex: 1,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    cancelBtnText: { ...typography.button, fontSize: 14, color: colors.text },
+    publishBtn: {
+      flex: 1,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    publishBtnText: {
+      ...typography.button,
+      fontSize: 14,
+      color: colors.onPrimary || colors.white,
+    },
   }), [colors]);
 
   const renderListHeader = () => {
@@ -596,6 +786,66 @@ export default function EventsScreen({ navigation }) {
           )}
         </Card>
       )}
+
+      {/* Notificaciones: avisos que publican docentes y preceptores (todos los roles) */}
+      <View style={s.avisosSection}>
+        <View style={s.avisosHeadRow}>
+          <Text style={s.avisosTitle}>🔔 Notificaciones</Text>
+          {esStaff && (
+            <TouchableOpacity style={s.publicarBtn} onPress={abrirModalAviso}>
+              <Text style={s.publicarBtnText}>＋ Publicar aviso</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {avisos.length === 0 ? (
+          <Text style={s.avisosEmpty}>No hay avisos por ahora</Text>
+        ) : (
+          avisos.map((a) => {
+            const cfg = TIPOS_AVISO[a.tipo] || {
+              icon: '•',
+              label: a.tipo,
+              color: 'primary',
+            };
+            const col = colors[cfg.color] || colors.primary;
+            return (
+              <View key={a.id} style={[s.avisoCard, { borderLeftColor: col }]}>
+                <View style={s.avisoHead}>
+                  <Text style={s.avisoIcon}>{cfg.icon}</Text>
+                  <Text style={s.avisoTitulo}>{a.titulo}</Text>
+                  <View style={[s.avisoChip, { backgroundColor: col + '1F' }]}>
+                    <Text style={[s.avisoChipText, { color: col }]}>{cfg.label}</Text>
+                  </View>
+                  {esStaff && (
+                    <TouchableOpacity
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() =>
+                        notify('Eliminar aviso', `¿Eliminar "${a.titulo}"?`, [
+                          { text: 'Cancelar', style: 'cancel' },
+                          {
+                            text: 'Eliminar',
+                            onPress: () => {
+                              borrarAviso(a.id);
+                              setAvisos(listarAvisos());
+                            },
+                          },
+                        ])
+                      }
+                    >
+                      <Text style={s.avisoDelete}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={s.avisoMeta}>
+                  📅 {formatDate(a.fecha)} · {a.autor || '—'}
+                </Text>
+                {a.detalle ? <Text style={s.avisoDetalle}>{a.detalle}</Text> : null}
+                {a.nota ? <Text style={s.avisoNota}>⭐ Nota: {a.nota}</Text> : null}
+              </View>
+            );
+          })
+        )}
+      </View>
 
       <Calendar
         records={courseRecords}
@@ -773,7 +1023,10 @@ export default function EventsScreen({ navigation }) {
       <TouchableOpacity
         style={s.reportButton}
         onPress={async () => {
-          const lines = filteredHistory.map((r) => `• ${r.student} (${r.course}): ${r.status} ${r.time}`).join('\n');
+          const lines = [...filteredHistory]
+            .sort(porApellido)
+            .map((r) => `• ${r.student} (${r.course}): ${r.status} ${r.time}`)
+            .join('\n');
           try {
             await Share.share({
               message: `Reporte de asistencia del ${formatDate(selectedDate)}\nPresentes: ${stats.presentes} · Tarde: ${stats.tarde} · Ausentes: ${stats.ausentes} · Total: ${stats.total}\n\n${lines || 'Sin registros'}`,
@@ -786,6 +1039,100 @@ export default function EventsScreen({ navigation }) {
         <Text style={s.reportButtonText}>📊 Generar reporte del día</Text>
       </TouchableOpacity>
       )}
+
+      {/* Modal: publicar aviso (solo docentes y preceptores) */}
+      <Modal
+        visible={modalAviso}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalAviso(false)}
+      >
+        <View style={s.modalOverlay}>
+          <ScrollView
+            style={s.modalCard}
+            contentContainerStyle={{ paddingBottom: 12 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={s.avisosHeadRow}>
+              <Text style={s.avisosTitle}>➕ Publicar aviso</Text>
+              <TouchableOpacity
+                onPress={() => setModalAviso(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={s.avisoDelete}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={s.fieldLabel}>Tipo</Text>
+            <View style={s.tipoChips}>
+              {tiposRol.map((t) => (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[s.tipoChip, form.tipo === t.key && s.tipoChipActive]}
+                  onPress={() => setForm((f) => ({ ...f, tipo: t.key }))}
+                >
+                  <Text
+                    style={[s.tipoChipText, form.tipo === t.key && s.tipoChipTextActive]}
+                  >
+                    {t.icon} {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.fieldLabel}>Título</Text>
+            <TextInput
+              style={s.input}
+              placeholder={tipoActual?.hint || 'Título del aviso'}
+              placeholderTextColor={colors.textSecondary}
+              value={form.titulo}
+              onChangeText={(t) => setForm((f) => ({ ...f, titulo: t }))}
+            />
+
+            <Text style={s.fieldLabel}>{tipoActual?.fechaLabel || 'Fecha'}</Text>
+            <Calendar
+              records={[]}
+              selectedDate={form.fecha}
+              onSelect={(f) => setForm((v) => ({ ...v, fecha: f }))}
+              showLegend={false}
+            />
+
+            {tipoActual?.conNota && (
+              <>
+                <Text style={s.fieldLabel}>Nota del trabajo práctico</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Ej: 10 puntos"
+                  placeholderTextColor={colors.textSecondary}
+                  value={form.nota}
+                  onChangeText={(t) => setForm((f) => ({ ...f, nota: t }))}
+                />
+              </>
+            )}
+
+            <Text style={s.fieldLabel}>Detalle (opcional)</Text>
+            <TextInput
+              style={[s.input, s.inputMultiline]}
+              placeholder="Aula, horario, materia…"
+              placeholderTextColor={colors.textSecondary}
+              value={form.detalle}
+              onChangeText={(t) => setForm((f) => ({ ...f, detalle: t }))}
+              multiline
+            />
+
+            {formError ? <Text style={s.formError}>{formError}</Text> : null}
+
+            <View style={s.modalActions}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setModalAviso(false)}>
+                <Text style={s.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.publishBtn} onPress={publicarAviso}>
+                <Text style={s.publishBtnText}>Publicar</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }

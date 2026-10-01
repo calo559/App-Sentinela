@@ -24,7 +24,7 @@ export const todayKey = () => {
  * - Tocás un día para filtrar la lista de ese día
  * - Buscador de fecha exacta (dd/mm/aaaa o aaaa-mm-dd)
  */
-export default function Calendar({ records = [], selectedDate, onSelect }) {
+export default function Calendar({ records = [], selectedDate, onSelect, showLegend = true }) {
   const { colors } = useTheme();
   const [view, setView] = useState(() => {
     const [y, m] = String(selectedDate || todayKey()).split('-').map(Number);
@@ -236,6 +236,7 @@ export default function Calendar({ records = [], selectedDate, onSelect }) {
       </View>
       {queryError ? <Text style={s.errorText}>{queryError}</Text> : null}
 
+      {showLegend && (
       <View style={s.legend}>
         {STATUS_ORDER.map((st) => (
           <View key={st} style={s.legendItem}>
@@ -246,6 +247,7 @@ export default function Calendar({ records = [], selectedDate, onSelect }) {
           </View>
         ))}
       </View>
+      )}
     </View>
   );
 }

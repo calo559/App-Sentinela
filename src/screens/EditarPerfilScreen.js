@@ -15,10 +15,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { getActiveUser, updateProfile } from '../services/authService';
 import { InputField, PasswordField, SelectChips, MultiChips } from '../components/FormFields';
-import { materiasDelAnio } from '../utils/malla';
+import { materiasDe, divisionesDe } from '../utils/malla';
 
 const CURSOS = ['1°', '2°', '3°', '4°', '5°', '6°', '7°'];
-const DIVISIONES = ['1', '2', '3', '4', '5'];
 
 export default function EditarPerfilScreen({ navigation }) {
   const { colors } = useTheme();
@@ -36,15 +35,78 @@ export default function EditarPerfilScreen({ navigation }) {
 
   const [curso, setCurso] = useState(active.curso || '');
   const [division, setDivision] = useState(active.division || '');
-  const [anioDoc, setAnioDoc] = useState(active.anio ? `${active.anio}°` : '');
-  const [materiasSel, setMateriasSel] = useState(active.materias || []);
+  // Docente: puede tener varios cursos, cada uno con sus materias
+  const cursosGuardados = Array.isArray(active.cursos) ? active.cursos : [];
+  const [aniosDoc, setAniosDoc] = useState(() => {
+    if (cursosGuardados.length) return [...new Set(cursosGuardados.map((c) => c.curso))];
+    return active.anio ? [`${active.anio}°`] : [];
+  });
+  const [divSel, setDivSel] = useState(() => {
+    const out = {};
+    cursosGuardados.forEach((c) => {
+      out[c.curso] = [...new Set([...(out[c.curso] || []), String(c.division)])];
+    });
+    return out;
+  });
+  const [materiasPorCurso, setMateriasPorCurso] = useState(() => {
+    const out = {};
+    cursosGuardados.forEach((c) => {
+      out[`${c.curso}${c.division}`] = Array.isArray(c.materias) ? c.materias : [];
+    });
+    return out;
+  });
   const [titulo, setTitulo] = useState(active.titulo || '');
 
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null); // { tipo: 'error', texto }
 
-  const toggleMateria = (m) =>
-    setMateriasSel((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+  // Cursos elegidos: cada combinación año + división ("7°" + "2" → "7°2"),
+  // ordenados como en la escuela (1°→7°, división 1→5).
+  const aniosOrdenados = CURSOS.filter((anio) => aniosDoc.includes(anio));
+  const cursosDoc = aniosOrdenados.flatMap((anio) =>
+    (divSel[anio] || []).slice().sort().map((div) => ({
+      anio,
+      div,
+      etiqueta: `${anio}${div}`,
+    }))
+  );
+
+  const toggleAnioDoc = (anio) => {
+    const quitaba = aniosDoc.includes(anio);
+    setAniosDoc(quitaba ? aniosDoc.filter((x) => x !== anio) : [...aniosDoc, anio]);
+    if (quitaba) {
+      // Quitar un año borra sus divisiones y las materias de sus cursos
+      const { [anio]: _sinAnio, ...divResto } = divSel;
+      setDivSel(divResto);
+      setMateriasPorCurso((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith(anio)))
+      );
+    }
+    setErrors((prev) => ({ ...prev, aniosDoc: '' }));
+  };
+
+  const toggleDivisionDoc = (anio, div) => {
+    const actual = divSel[anio] || [];
+    const quitaba = actual.includes(div);
+    setDivSel({ ...divSel, [anio]: quitaba ? actual.filter((x) => x !== div) : [...actual, div] });
+    if (quitaba) {
+      const copia = { ...materiasPorCurso };
+      delete copia[`${anio}${div}`];
+      setMateriasPorCurso(copia);
+    }
+    setErrors((prev) => ({ ...prev, [`div_${anio}`]: '' }));
+  };
+
+  const toggleMateriaDoc = (etiqueta, materia) => {
+    const actual = materiasPorCurso[etiqueta] || [];
+    setMateriasPorCurso({
+      ...materiasPorCurso,
+      [etiqueta]: actual.includes(materia)
+        ? actual.filter((x) => x !== materia)
+        : [...actual, materia],
+    });
+    setErrors((prev) => ({ ...prev, [`materias_${etiqueta}`]: '' }));
+  };
 
   const validate = () => {
     const e = {};
@@ -55,8 +117,15 @@ export default function EditarPerfilScreen({ navigation }) {
     if (password && password.length < 6) e.password = 'Mínimo 6 caracteres';
 
     if (esDocente) {
-      if (!anioDoc) e.anioDoc = 'Seleccioná el año que dictás';
-      if (materiasSel.length === 0) e.materiasSel = 'Elegí al menos una materia';
+      if (aniosDoc.length === 0) e.aniosDoc = 'Seleccioná al menos un año que dictés';
+      else
+        aniosDoc.forEach((anio) => {
+          if (!(divSel[anio] || []).length) e[`div_${anio}`] = `Elegí la división del ${anio}`;
+        });
+      cursosDoc.forEach((c) => {
+        if (!(materiasPorCurso[c.etiqueta] || []).length)
+          e[`materias_${c.etiqueta}`] = 'Elegí al menos una materia en este curso';
+      });
       if (!titulo.trim()) e.titulo = 'El título es requerido';
     } else if (esAlumnoOCurso) {
       if (!curso) e.curso = 'Seleccioná un curso';
@@ -84,8 +153,13 @@ export default function EditarPerfilScreen({ navigation }) {
       if (password) patch.password = password; // vacío = no cambiar
 
       if (esDocente) {
-        patch.anio = anioDoc.replace(/[^\d]/g, '');
-        patch.materias = materiasSel;
+        patch.anio = (cursosDoc[0]?.anio ?? aniosDoc[0] ?? '').replace(/[^\d]/g, '');
+        patch.materias = [...new Set(cursosDoc.flatMap((c) => materiasPorCurso[c.etiqueta] || []))];
+        patch.cursos = cursosDoc.map((c) => ({
+          curso: c.anio,
+          division: c.div,
+          materias: materiasPorCurso[c.etiqueta] || [],
+        }));
         patch.titulo = titulo.trim();
       } else if (esAlumnoOCurso) {
         patch.curso = curso;
@@ -202,7 +276,7 @@ export default function EditarPerfilScreen({ navigation }) {
                 />
                 <SelectChips
                   label="División"
-                  options={DIVISIONES}
+                  options={divisionesDe(curso)}
                   value={division}
                   onSelect={setDivision}
                   errors={errors}
@@ -215,27 +289,39 @@ export default function EditarPerfilScreen({ navigation }) {
             {esDocente && (
               <View>
                 {sectionLabel('DATOS DOCENTE')}
-                <SelectChips
-                  label="Año que dictás"
-                  options={CURSOS}
-                  value={anioDoc}
-                  onSelect={(v) => {
-                    setAnioDoc(v);
-                    setMateriasSel([]); // las materias dependen del año
-                  }}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="anioDoc"
-                />
                 <MultiChips
-                  label="Materias que dictás (podés elegir varias)"
-                  options={materiasDelAnio(anioDoc)}
-                  value={materiasSel}
-                  onToggle={toggleMateria}
+                  label="Años que dictás (podés elegir varios)"
+                  options={CURSOS}
+                  value={aniosDoc}
+                  onToggle={toggleAnioDoc}
                   errors={errors}
                   setErrors={setErrors}
-                  errorKey="materiasSel"
+                  errorKey="aniosDoc"
                 />
+                {aniosOrdenados.map((anio) => (
+                  <MultiChips
+                    key={`div-${anio}`}
+                    label={`Divisiones del ${anio} (las que existen)`}
+                    options={divisionesDe(anio)}
+                    value={divSel[anio] || []}
+                    onToggle={(div) => toggleDivisionDoc(anio, div)}
+                    errors={errors}
+                    setErrors={setErrors}
+                    errorKey={`div_${anio}`}
+                  />
+                ))}
+                {cursosDoc.map((c) => (
+                  <MultiChips
+                    key={c.etiqueta}
+                    label={`Materias del ${c.etiqueta}`}
+                    options={materiasDe(c.anio, c.div)}
+                    value={materiasPorCurso[c.etiqueta] || []}
+                    onToggle={(materia) => toggleMateriaDoc(c.etiqueta, materia)}
+                    errors={errors}
+                    setErrors={setErrors}
+                    errorKey={`materias_${c.etiqueta}`}
+                  />
+                ))}
                 <InputField
                   icon="certificate"
                   label="Título profesional"

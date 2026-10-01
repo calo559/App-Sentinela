@@ -165,17 +165,55 @@ export function materiasDelAnio(anio) {
   return [...set];
 }
 
-// Informe de avance: tres opciones que el docente selecciona por alumno
+/**
+ * Divisiones que EXISTEN en cada año. Lo que no existe no se puede elegir:
+ * 7° solo tiene 7°1 (Electromecánica) y 7°2 (Informática).
+ * 1° a 3°: ciclo común, todas las divisiones dan lo mismo.
+ */
+export const DIVISIONES_POR_ANIO = {
+  '1°': ['1', '2', '3', '4', '5'],
+  '2°': ['1', '2', '3', '4', '5'],
+  '3°': ['1', '2', '3', '4', '5'],
+  '4°': ['1', '2', '3'],
+  '5°': ['1', '2', '3'],
+  '6°': ['1', '2'],
+  '7°': ['1', '2'],
+};
+
+/** Divisiones de un año ("7°" o "7" → ['1','2']); sin año, las estándar. */
+export function divisionesDe(anio) {
+  const base = String(anio ?? '').replace(/[^\d]/g, '');
+  const clave = base ? `${base}°` : '';
+  return DIVISIONES_POR_ANIO[clave] || ['1', '2', '3', '4', '5'];
+}
+
+// Informe de avance: tres opciones que el docente selecciona por alumno.
+// `rango` es SOLO para el docente (cargar con criterio): el alumno nunca lo ve,
+// en su pantalla aparece la sigla y el desc, jamás la nota equivalente.
 export const INFORME_OPCIONES = [
-  { key: 'TED', label: 'TED', color: '#FBBF24' },
-  { key: 'TEP', label: 'TEP', color: '#38BDF8' },
-  { key: 'TEA', label: 'TEA', color: '#A78BFA' },
+  { key: 'TED', label: 'TED', desc: 'En desarrollo', rango: '1 a 4', color: '#FBBF24' },
+  { key: 'TEP', label: 'TEP', desc: 'En proceso', rango: '4 a 6', color: '#38BDF8' },
+  { key: 'TEA', label: 'TEA', desc: 'Excelente avance', rango: '7 a 10', color: '#A78BFA' },
 ];
 
 export const CUATRIMESTRES = [
   { key: 1, label: '1er Cuatrimestre', periodo: 'Marzo – Julio' },
   { key: 2, label: '2do Cuatrimestre', periodo: 'Agosto – Diciembre' },
 ];
+
+// Cada materia se carga en tres tipos de evaluación (el boletín los muestra por separado)
+export const TIPOS_NOTA = [
+  { key: 'tp', label: 'Trabajos prácticos', corto: 'TP' },
+  { key: 'ev', label: 'Evaluaciones', corto: 'Eval' },
+  { key: 'ex', label: 'Exposiciones', corto: 'Exp' },
+];
+
+/** Promedio (1 decimal) de los tipos cargados; null si no hay ninguno. */
+export function promedioDe(componentes) {
+  const vals = TIPOS_NOTA.map((t) => componentes?.[t.key]).filter((v) => v != null);
+  if (!vals.length) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+}
 
 // Notas determinísticas (mismo alumno + materia + cuatrimestre = siempre igual)
 function hash(str) {
@@ -188,16 +226,24 @@ function hash(str) {
 const POOL = [6, 7, 7, 8, 8, 8, 9, 9, 10, 7, 6, 8, 5, 9, 4, 7, 8, 6];
 
 /**
- * Notas de cada materia para un cuatrimestre.
- * Devuelve [{ materia, nota (4..10 | null), estado: 'aprobada'|'libre'|'pendiente' }]
+ * Notas de cada materia para un cuatrimestre (datos demo, determinísticos).
+ * Devuelve [{ materia, nota (promedio 1 decimal | null), estado, componentes: {tp, ev, ex} | null }]
+ * Las que cargan los docentes reemplazan a estas (ver gradesService).
  */
 export function notasDe(semilla, materias, cuatrimestre) {
   return materias.map((materia) => {
-    const h = hash(`${semilla}|${materia}|c${cuatrimestre}`);
-    const pendiente = cuatrimestre === 2 && h % 13 === 0;
-    const nota = pendiente ? null : POOL[h % POOL.length]; // 4 a 10
-    const estado = pendiente ? 'pendiente' : nota >= 6 ? 'aprobada' : 'libre';
-    return { materia, nota, estado };
+    const base = `${semilla}|${materia}|c${cuatrimestre}`;
+    const pendiente = cuatrimestre === 2 && hash(base) % 13 === 0;
+    const componentes = pendiente
+      ? null
+      : {
+          tp: POOL[hash(`${base}|tp`) % POOL.length],
+          ev: POOL[hash(`${base}|ev`) % POOL.length],
+          ex: POOL[hash(`${base}|ex`) % POOL.length],
+        };
+    const nota = componentes ? promedioDe(componentes) : null;
+    const estado = nota == null ? 'pendiente' : nota >= 6 ? 'aprobada' : 'libre';
+    return { materia, nota, estado, componentes };
   });
 }
 

@@ -15,6 +15,8 @@ const DEMO_USERS = [
     email: 'docente@escuela.edu', password: '123456',
     titulo: 'Prof. de Matemática', anio: '4',
     materias: ['Matemática', 'Física', 'Programación I'],
+    // Un docente puede dictar en varios cursos; cada uno con sus materias
+    cursos: [{ curso: '4°', division: '2', materias: ['Matemática', 'Física', 'Programación I'] }],
   },
   {
     role: 'preceptor', nombre: 'María', apellido: 'Preceptora', dni: '33333333',
@@ -98,7 +100,7 @@ export function logout() {
 
 /**
  * Actualiza el perfil del usuario activo (y su cuenta).
- * patch: nombre, apellido, dni, email, password?, curso?, division?, anio?, materias?, titulo?
+ * patch: nombre, apellido, dni, email, password?, curso?, division?, anio?, materias?, cursos?, titulo?
  */
 export function updateProfile(patch) {
   const users = loadUsers();

@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { getActiveUser } from '../services/authService';
-import { getNotasAlumno, getInforme } from '../services/gradesService';
+import { getNotasAlumno, getInformesAlumno } from '../services/gradesService';
 import CargaNotas from '../components/CargaNotas';
 import Header from '../components/Header';
 import {
@@ -18,14 +18,16 @@ import {
   materiasDe,
   detalleMateria,
   etiquetaCurso,
+  divisionesDe,
   notasDe,
   informeDe,
   colorNota,
   INFORME_OPCIONES,
+  TIPOS_NOTA,
+  promedioDe,
 } from '../utils/malla';
 
 const CURSOS = ['1°', '2°', '3°', '4°', '5°', '6°', '7°'];
-const DIVISIONES = ['1', '2', '3', '4', '5'];
 
 const ESTADO_LABEL = { aprobada: 'Aprobada', libre: 'Libre', pendiente: 'En curso' };
 const ESTADO_COLOR = {
@@ -39,6 +41,9 @@ const fechaHoy = () => {
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
+
+// 7 → "7" · 7.5 → "7,5" · null → "—"
+const fmtNota = (n) => (n == null ? '—' : String(n).replace('.', ','));
 
 // Chip reutilizable (nombres cortos para no repetir estilos)
 function Chip({ label, active, onPress, colors }) {
@@ -91,6 +96,8 @@ export default function BoletinScreen() {
   const [pickCurso, setPickCurso] = useState('4°');
   const [pickDivision, setPickDivision] = useState('2');
   const [cuatri, setCuatri] = useState(1);
+  // Materia abierta en la lista (el alumno ve el detalle: TP / eval / exp + informe)
+  const [materiaAbierta, setMateriaAbierta] = useState(null);
 
   const curso = tieneCurso ? active.curso : pickCurso;
   const division = tieneCurso ? active.division : pickDivision;
@@ -107,26 +114,31 @@ export default function BoletinScreen() {
   const semilla = `${active.email || active.nombre || 'invitado'}|${cursoDiv}`;
   const rowsBase = notasDe(semilla, materias, cuatri);
 
-  // Notas cargadas por los docentes reemplazan a las del boletín
+  // Notas cargadas por los docentes (TP / evaluaciones / exposiciones)
+  // reemplazan a las demo de cada materia. La nota de la materia = promedio.
   const guardadas = active.email
     ? getNotasAlumno({ cursoDiv, cuatri, alumnoId: active.email })
     : {};
   const rows = rowsBase.map((r) => {
-    if (!(r.materia in guardadas)) return r;
-    const nota = guardadas[r.materia];
+    const componentes = guardadas[r.materia] || r.componentes || null;
+    const nota = promedioDe(componentes);
     const estado = nota == null ? 'pendiente' : nota >= 6 ? 'aprobada' : 'libre';
-    return { ...r, nota, estado };
+    return { ...r, componentes, nota, estado };
   });
 
   const informe = informeDe(rows);
-  // Informe escrito por un docente (TED / TEP / TEA + descripción)
-  const informeDoc = active.email
-    ? getInforme({ cursoDiv, cuatri, alumnoId: active.email })
-    : null;
-  const colorClasif = informeDoc
-    ? INFORME_OPCIONES.find((o) => o.key === informeDoc.clasif)?.color || colors.primary
-    : colors.primary;
+  // Informes de avance por materia que cargaron los docentes: el alumno ve la
+  // sigla y la descripción… NUNCA la nota numérica equivalente (eso lo tiene
+  // sólo el docente para cargar con criterio).
+  const informesAlumno = active.email
+    ? getInformesAlumno({ cursoDiv, cuatri, alumnoId: active.email })
+    : {};
+  const informesLista = rows
+    .filter((r) => informesAlumno[r.materia])
+    .map((r) => ({ materia: r.materia, ...informesAlumno[r.materia] }));
   const periodo = CUATRIMESTRES.find((c) => c.key === cuatri);
+  const opDe = (clasif) => INFORME_OPCIONES.find((o) => o.key === clasif);
+  const colorClasif = (clasif) => opDe(clasif)?.color || colors.primary;
 
   const nombreAlumno = [active.nombre, active.apellido].filter(Boolean).join(' ');
 
@@ -190,7 +202,12 @@ export default function BoletinScreen() {
                   label={c}
                   colors={colors}
                   active={pickCurso === c}
-                  onPress={() => setPickCurso(c)}
+                  onPress={() => {
+                    setPickCurso(c);
+                    // Si la división elegida no existe en ese año, pasamos a la primera
+                    const divs = divisionesDe(c);
+                    if (!divs.includes(pickDivision)) setPickDivision(divs[0]);
+                  }}
                 />
               ))}
             </View>
@@ -198,7 +215,7 @@ export default function BoletinScreen() {
               DIVISIÓN
             </Text>
             <View style={st.chipsRow}>
-              {DIVISIONES.map((d) => (
+              {divisionesDe(pickCurso).map((d) => (
                 <Chip
                   key={d}
                   label={d}
@@ -245,7 +262,14 @@ export default function BoletinScreen() {
             curso={curso}
             division={division}
             cuatri={cuatri}
-            misMaterias={active.materias || (active.materia ? [active.materia] : [])}
+            misMaterias={
+              Array.isArray(active.cursos)
+                ? // Materias que eligió para ESTE curso (cada curso, las suyas)
+                  active.cursos.find((c) => `${c.curso}${c.division}` === `${curso}${division}`)
+                    ?.materias || []
+                : // Cuenta vieja sin cursos: la unión plana como antes
+                  active.materias || (active.materia ? [active.materia] : [])
+            }
           />
         )}
 
@@ -288,29 +312,29 @@ export default function BoletinScreen() {
             />
           </View>
 
-          {informeDoc ? (
-            <View>
-              <View style={st.clasifRow}>
-                <View
-                  style={[
-                    st.clasifBadge,
-                    { borderColor: colorClasif, backgroundColor: colorClasif + '1F' },
-                  ]}
-                >
-                  <Text style={[st.clasifText, { color: colorClasif }]}>{informeDoc.clasif}</Text>
+          {informesLista.length ? (
+            informesLista.map((inf) => {
+              const c = colorClasif(inf.clasif);
+              const op = opDe(inf.clasif);
+              return (
+                <View key={inf.materia} style={st.clasifRow}>
+                  <View
+                    style={[st.clasifBadge, { borderColor: c, backgroundColor: c + '1F' }]}
+                  >
+                    <Text style={[st.clasifText, { color: c }]}>{inf.clasif}</Text>
+                  </View>
+                  <Text style={[st.clasifMeta, { color: colors.textSecondary }]}>
+                    {`${inf.materia}${op ? ` · ${op.desc}` : ''}${
+                      inf.fecha ? ` · ${inf.fecha}` : ''
+                    }`}
+                  </Text>
                 </View>
-                <Text style={[st.clasifMeta, { color: colors.textSecondary }]}>
-                  {`${informeDoc.materia}${informeDoc.autor ? ` · ${informeDoc.autor}` : ''}${
-                    informeDoc.fecha ? ` · ${informeDoc.fecha}` : ''
-                  }`}
-                </Text>
-              </View>
-              <Text style={[st.reportText, { color: colors.textSecondary }]}>
-                {informeDoc.desc || 'El docente registró este informe sin descripción adicional.'}
-              </Text>
-            </View>
+              );
+            })
           ) : (
-            <Text style={[st.reportText, { color: colors.textSecondary }]}>{informe.texto}</Text>
+            <Text style={[st.reportText, { color: colors.textSecondary }]}>
+              {informe.texto}
+            </Text>
           )}
 
           {informe.destacada && (
@@ -338,55 +362,149 @@ export default function BoletinScreen() {
             </View>
           </View>
 
-          {rows.map((row, idx) => (
-            <View
-              key={row.materia}
-              style={[
-                st.subjectRow,
-                idx < rows.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
-              ]}
-            >
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={[st.subjectName, { color: colors.text }]} numberOfLines={1}>
-                  {row.materia}
-                </Text>
-                {detalles[row.materia]?.docente ? (
-                  <Text
-                    style={[st.subjectMeta, { color: colors.textSecondary }]}
-                    numberOfLines={2}
-                  >
-                    {`${detalles[row.materia].docente} · ${detalles[row.materia].horario}`}
-                  </Text>
-                ) : null}
-                <View style={[st.barBg, { backgroundColor: colors.surfaceVariant }]}>
-                  <View
-                    style={[
-                      st.barFill,
-                      {
-                        width: `${(row.nota ?? 0) * 10}%`,
-                        backgroundColor: colorNota(row.nota),
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[st.subjectState, { color: ESTADO_COLOR[row.estado] }]}
-                >
-                  {ESTADO_LABEL[row.estado]}
-                </Text>
-              </View>
+          {rows.map((row, idx) => {
+            const abierta = materiaAbierta === row.materia;
+            const comp = row.componentes;
+            const inf = informesAlumno[row.materia];
+            const op = inf ? opDe(inf.clasif) : null;
+            const cInf = inf ? colorClasif(inf.clasif) : colors.primary;
+            return (
               <View
+                key={row.materia}
                 style={[
-                  st.noteBadge,
-                  { borderColor: colorNota(row.nota), backgroundColor: colorNota(row.nota) + '1F' },
+                  idx < rows.length - 1 && {
+                    borderBottomColor: colors.border,
+                    borderBottomWidth: 1,
+                  },
                 ]}
               >
-                <Text style={[st.noteValue, { color: colorNota(row.nota) }]}>
-                  {row.nota ?? '—'}
-                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setMateriaAbierta(abierta ? null : row.materia)}
+                  style={st.subjectRow}
+                >
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={[st.subjectName, { color: colors.text }]} numberOfLines={1}>
+                      {row.materia}
+                    </Text>
+                    {detalles[row.materia]?.docente ? (
+                      <Text
+                        style={[st.subjectMeta, { color: colors.textSecondary }]}
+                        numberOfLines={2}
+                      >
+                        {`${detalles[row.materia].docente} · ${detalles[row.materia].horario}`}
+                      </Text>
+                    ) : null}
+                    <View style={[st.barBg, { backgroundColor: colors.surfaceVariant }]}>
+                      <View
+                        style={[
+                          st.barFill,
+                          {
+                            width: `${(row.nota ?? 0) * 10}%`,
+                            backgroundColor: colorNota(row.nota),
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={[st.subjectState, { color: ESTADO_COLOR[row.estado] }]}>
+                      {ESTADO_LABEL[row.estado]} · tocar para ver el detalle
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      st.noteBadge,
+                      {
+                        borderColor: colorNota(row.nota),
+                        backgroundColor: colorNota(row.nota) + '1F',
+                      },
+                    ]}
+                  >
+                    <Text style={[st.noteValue, { color: colorNota(row.nota) }]}>
+                      {fmtNota(row.nota)}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={abierta ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+
+                {abierta && (
+                  <View
+                    style={[
+                      st.detail,
+                      { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[st.detailTitle, { color: colors.textSecondary }]}>
+                      NOTAS POR TIPO
+                    </Text>
+                    {TIPOS_NOTA.map((t) => (
+                      <View key={t.key} style={st.detailRow}>
+                        <Text style={[st.detailLabel, { color: colors.textSecondary }]}>
+                          {t.label}
+                        </Text>
+                        <Text style={[st.detailValue, { color: colorNota(comp?.[t.key]) }]}>
+                          {fmtNota(comp?.[t.key])}
+                        </Text>
+                      </View>
+                    ))}
+                    <View
+                      style={[
+                        st.detailRow,
+                        st.detailPromedio,
+                        { borderTopColor: colors.border },
+                      ]}
+                    >
+                      <Text style={[st.detailLabel, { color: colors.text, fontWeight: '800' }]}>
+                        Promedio
+                      </Text>
+                      <Text
+                        style={[st.detailValue, { color: colorNota(row.nota), fontWeight: '800' }]}
+                      >
+                        {fmtNota(row.nota)}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={[st.detailTitle, { color: colors.textSecondary, marginTop: 12 }]}
+                    >
+                      INFORME DE AVANCE
+                    </Text>
+                    {inf ? (
+                      <View>
+                        <View style={st.detailInforme}>
+                          <View
+                            style={[
+                              st.clasifBadge,
+                              { borderColor: cInf, backgroundColor: cInf + '1F' },
+                            ]}
+                          >
+                            <Text style={[st.clasifText, { color: cInf }]}>{inf.clasif}</Text>
+                          </View>
+                          <Text style={[st.clasifMeta, { color: colors.textSecondary }]}>
+                            {`${op ? op.desc : ''}${inf.autor ? ` · ${inf.autor}` : ''}${
+                              inf.fecha ? ` · ${inf.fecha}` : ''
+                            }`}
+                          </Text>
+                        </View>
+                        <Text style={[st.detailDesc, { color: colors.textSecondary }]}>
+                          {inf.desc ||
+                            'El docente registró este informe sin descripción adicional.'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={[st.detailDesc, { color: colors.textSecondary }]}>
+                        Todavía no hay informe de avance en esta materia. Cuando tu docente
+                        cargue uno vas a verlo acá.
+                      </Text>
+                    )}
+                  </View>
+                )}
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
         )}
 
@@ -535,6 +653,21 @@ const st = StyleSheet.create({
     paddingHorizontal: 6,
   },
   noteValue: { fontSize: 17, fontWeight: '800' },
+
+  // Detalle de la materia: TP / evaluaciones / exposiciones + informe de avance
+  detail: { borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 12 },
+  detailTitle: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.8, marginBottom: 8 },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  detailPromedio: { borderTopWidth: 1, marginTop: 6, paddingTop: 8 },
+  detailLabel: { fontSize: 12.5 },
+  detailValue: { fontSize: 13.5, fontWeight: '700' },
+  detailInforme: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  detailDesc: { fontSize: 12, lineHeight: 17 },
 
   legal: { fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 2, paddingHorizontal: 8 },
 });

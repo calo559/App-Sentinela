@@ -24,7 +24,8 @@ const infoRows = (profile) => {
       value: profile.curso,
     });
   }
-  if (profile.anio) rows.push({ label: 'Año que dicta', value: profile.anio });
+  if (profile.cursos) rows.push({ label: 'Cursos que dicta', value: profile.cursos });
+  else if (profile.anio) rows.push({ label: 'Año que dicta', value: profile.anio });
   if (profile.materias) rows.push({ label: 'Materias que dicta', value: profile.materias });
   if (profile.titulo) rows.push({ label: 'Título', value: profile.titulo });
   return rows;
@@ -47,6 +48,10 @@ export default function ProfileScreen({ navigation }) {
     dni: active.dni || '—',
     curso: active.curso ? `${active.curso}${active.division ?? ''}` : null,
     anio: active.anio ? `${active.anio}°` : null,
+    cursos:
+      Array.isArray(active.cursos) && active.cursos.length
+        ? active.cursos.map((c) => `${c.curso}${c.division}`).join(' · ')
+        : null,
     materias:
       Array.isArray(active.materias) && active.materias.length
         ? active.materias.join(', ')

@@ -17,7 +17,7 @@ import { register } from "../services/authService";
 import { notify } from "../utils/notify";
 import AuthBrand from "../components/AuthBrand";
 import { InputField, PasswordField, SelectChips, MultiChips } from "../components/FormFields";
-import { materiasDelAnio } from "../utils/malla";
+import { materiasDe, divisionesDe } from "../utils/malla";
 
 const ROLES = [
   {
@@ -41,7 +41,6 @@ const ROLES = [
 ];
 
 const CURSOS = ["1°", "2°", "3°", "4°", "5°", "6°", "7°"];
-const DIVISIONES = ["1", "2", "3", "4", "5"];
 
 // Opción de rol (nivel de módulo para no remontar el componente en cada render)
 function RoleOption({ item, selected, onPress }) {
@@ -113,9 +112,10 @@ export default function RegisterScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // Docente
-  const [anioDoc, setAnioDoc] = useState("");
-  const [materiasSel, setMateriasSel] = useState([]);
+  // Docente (puede dictar en varios cursos)
+  const [aniosDoc, setAniosDoc] = useState([]); // ['7°', '3°']
+  const [divSel, setDivSel] = useState({}); // { '7°': ['2'] }
+  const [materiasPorCurso, setMateriasPorCurso] = useState({}); // { '7°2': [...] }
   const [titulo, setTitulo] = useState("");
 
   // Alumno / Preceptor
@@ -168,8 +168,15 @@ export default function RegisterScreen({ navigation }) {
     if (!email.trim() || !email.includes("@")) e.email = "Ingresá un correo válido";
     if (!password || password.length < 6) e.password = "La contraseña debe tener al menos 6 caracteres";
     if (role === "docente") {
-      if (!anioDoc) e.anioDoc = "Seleccioná el año que dictás";
-      if (materiasSel.length === 0) e.materiasSel = "Elegí al menos una materia";
+      if (aniosDoc.length === 0) e.aniosDoc = "Seleccioná al menos un año que dictés";
+      else
+        aniosDoc.forEach((anio) => {
+          if (!(divSel[anio] || []).length) e[`div_${anio}`] = `Elegí la división del ${anio}`;
+        });
+      cursosDoc.forEach((c) => {
+        if (!(materiasPorCurso[c.etiqueta] || []).length)
+          e[`materias_${c.etiqueta}`] = "Elegí al menos una materia en este curso";
+      });
       if (!titulo.trim()) e.titulo = "El título es requerido";
     }
     if (role === "alumno" || role === "preceptor") {
@@ -198,7 +205,16 @@ export default function RegisterScreen({ navigation }) {
       const data = {
         role, nombre, apellido, dni, email, password,
         ...(role === "docente"
-          ? { anio: anioDoc.replace(/[^\d]/g, ""), materias: materiasSel, titulo }
+          ? {
+              anio: (cursosDoc[0]?.anio ?? aniosDoc[0] ?? "").replace(/[^\d]/g, ""),
+              materias: [...new Set(cursosDoc.flatMap((c) => materiasPorCurso[c.etiqueta] || []))],
+              cursos: cursosDoc.map((c) => ({
+                curso: c.anio,
+                division: c.div,
+                materias: materiasPorCurso[c.etiqueta] || [],
+              })),
+              titulo,
+            }
           : { curso, division }),
       };
       register(data); // crea la cuenta e inicia sesión (authService)
@@ -212,8 +228,53 @@ export default function RegisterScreen({ navigation }) {
 
   const sectionLabel = (text) => <Text style={styles.sectionLabel}>{text}</Text>;
 
-  const toggleMateria = (m) =>
-    setMateriasSel((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+  // Cursos elegidos: cada combinación año + división ("7°" + "2" → "7°2"),
+  // ordenados como en la escuela (1°→7°, división 1→5).
+  const aniosOrdenados = CURSOS.filter((anio) => aniosDoc.includes(anio));
+  const cursosDoc = aniosOrdenados.flatMap((anio) =>
+    (divSel[anio] || []).slice().sort().map((div) => ({
+      anio,
+      div,
+      etiqueta: `${anio}${div}`,
+    }))
+  );
+
+  const toggleAnioDoc = (anio) => {
+    const quitaba = aniosDoc.includes(anio);
+    setAniosDoc(quitaba ? aniosDoc.filter((x) => x !== anio) : [...aniosDoc, anio]);
+    if (quitaba) {
+      // Quitar un año borra sus divisiones y las materias de sus cursos
+      const { [anio]: _sinAnio, ...divResto } = divSel;
+      setDivSel(divResto);
+      setMateriasPorCurso((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith(anio)))
+      );
+    }
+    setErrors((prev) => ({ ...prev, aniosDoc: "" }));
+  };
+
+  const toggleDivisionDoc = (anio, div) => {
+    const actual = divSel[anio] || [];
+    const quitaba = actual.includes(div);
+    setDivSel({ ...divSel, [anio]: quitaba ? actual.filter((x) => x !== div) : [...actual, div] });
+    if (quitaba) {
+      const copia = { ...materiasPorCurso };
+      delete copia[`${anio}${div}`];
+      setMateriasPorCurso(copia);
+    }
+    setErrors((prev) => ({ ...prev, [`div_${anio}`]: "" }));
+  };
+
+  const toggleMateriaDoc = (etiqueta, materia) => {
+    const actual = materiasPorCurso[etiqueta] || [];
+    setMateriasPorCurso({
+      ...materiasPorCurso,
+      [etiqueta]: actual.includes(materia)
+        ? actual.filter((x) => x !== materia)
+        : [...actual, materia],
+    });
+    setErrors((prev) => ({ ...prev, [`materias_${etiqueta}`]: "" }));
+  };
 
   return (
     <LinearGradient colors={["#00C9DB", "#0B1628", "#6B3FA0"]} style={styles.container} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
@@ -294,27 +355,39 @@ export default function RegisterScreen({ navigation }) {
             {role === "docente" && (
               <View style={styles.sectionBlock}>
                 {sectionLabel("DATOS DOCENTE")}
-                <SelectChips
-                  label="Año que dictás"
-                  options={CURSOS}
-                  value={anioDoc}
-                  onSelect={(v) => {
-                    setAnioDoc(v);
-                    setMateriasSel([]); // las materias cambian con el año
-                  }}
-                  errors={errors}
-                  setErrors={setErrors}
-                  errorKey="anioDoc"
-                />
                 <MultiChips
-                  label="Materias que dictás (podés elegir varias)"
-                  options={materiasDelAnio(anioDoc)}
-                  value={materiasSel}
-                  onToggle={toggleMateria}
+                  label="Años que dictás (podés elegir varios)"
+                  options={CURSOS}
+                  value={aniosDoc}
+                  onToggle={toggleAnioDoc}
                   errors={errors}
                   setErrors={setErrors}
-                  errorKey="materiasSel"
+                  errorKey="aniosDoc"
                 />
+                {aniosOrdenados.map((anio) => (
+                  <MultiChips
+                    key={`div-${anio}`}
+                    label={`Divisiones del ${anio} (las que existen)`}
+                    options={divisionesDe(anio)}
+                    value={divSel[anio] || []}
+                    onToggle={(div) => toggleDivisionDoc(anio, div)}
+                    errors={errors}
+                    setErrors={setErrors}
+                    errorKey={`div_${anio}`}
+                  />
+                ))}
+                {cursosDoc.map((c) => (
+                  <MultiChips
+                    key={c.etiqueta}
+                    label={`Materias del ${c.etiqueta}`}
+                    options={materiasDe(c.anio, c.div)}
+                    value={materiasPorCurso[c.etiqueta] || []}
+                    onToggle={(materia) => toggleMateriaDoc(c.etiqueta, materia)}
+                    errors={errors}
+                    setErrors={setErrors}
+                    errorKey={`materias_${c.etiqueta}`}
+                  />
+                ))}
                 <InputField icon="certificate" label="Título profesional" placeholder="Ej: Prof. de Matemática" value={titulo} onChangeText={setTitulo} errors={errors} setErrors={setErrors} errorKey="titulo" />
               </View>
             )}
@@ -334,7 +407,7 @@ export default function RegisterScreen({ navigation }) {
                 />
                 <SelectChips
                   label="División"
-                  options={DIVISIONES}
+                  options={divisionesDe(curso)}
                   value={division}
                   onSelect={setDivision}
                   errors={errors}
