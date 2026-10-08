@@ -57,8 +57,9 @@ export const crearAlumno = async ({
 /**
  * Alta publica de alumno (Opcion B): crea la cuenta de Authentication y el
  * perfil en `alumnos/{uid}` (el ID del documento ES el uid). No escribe nada en
- * `usuarios/`. El curso y el legajo los asigna la institucion despues; aca
- * nacen en null y "" respectivamente, como exige la regla de `alumnos`.
+ * `usuarios/`. El curso lo elige el alumno en el registro (tiene que EXISTIR en
+ * `cursos/`, lo exige la regla); el legajo lo asigna la institucion despues y
+ * nace en "".
  */
 export const crearAlumnoPublico = async ({
   email,
@@ -67,6 +68,7 @@ export const crearAlumnoPublico = async ({
   apellido,
   dni = '',
   telefono = '',
+  cursoId = null,
 }) => {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const { uid } = credential.user;
@@ -82,7 +84,9 @@ export const crearAlumnoPublico = async ({
       legajo: '',
       email,
       telefono,
-      cursoId: null,
+      // Elegido en el registro: las reglas exigen que exista en `cursos/`.
+      // null sigue siendo valido (ruta de la web, donde lo asigna el admin).
+      cursoId: cursoId || null,
       activo: true,
       usuarioId: uid,
       creadoEn: serverTimestamp(),

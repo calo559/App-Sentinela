@@ -28,6 +28,8 @@ export const crearUsuario = async ({
   rol = ROLES.ALUMNO,
   telefono = '',
   activo = true,
+  cursosDeclarados = null,
+  materiasDeclaradas = null,
 }) => {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const { uid } = credential.user;
@@ -46,6 +48,15 @@ export const crearUsuario = async ({
       telefono,
       activo,
       alumnoId: null,
+      // Declaracion al registrarse (docente: cursos + materias; preceptor:
+      // cursos). No dan permiso: la administracion las confirma despues en
+      // materias.docenteId / cursos.preceptorIds.
+      ...(Array.isArray(cursosDeclarados) && cursosDeclarados.length
+        ? { cursosDeclarados }
+        : {}),
+      ...(Array.isArray(materiasDeclaradas) && materiasDeclaradas.length
+        ? { materiasDeclaradas }
+        : {}),
       fechaCreacion: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },

@@ -18,7 +18,16 @@ import { ROLES } from '../services/firestore';
 import { notify } from '../utils/notify';
 import { SCREENS } from '../utils/constants';
 import AuthBrand from '../components/AuthBrand';
-import { InputField, PasswordField } from '../components/FormFields';
+import { InputField, PasswordField, SelectChips, MultiChips } from '../components/FormFields';
+import {
+  ANIOS_ESCOLARES,
+  ANIOS_OPCIONES,
+  CURSOS_OPCIONES,
+  MATERIAS_ESCOLARES,
+  divisionesDe,
+  divisionesOpciones,
+  etiquetaCursoId,
+} from '../utils/colegio';
 
 const ERRORES = {
   'auth/email-already-in-use': 'Ya existe una cuenta con ese correo electrónico.',
@@ -35,8 +44,20 @@ const ROLES_DISPONIBLES = [
   {
     key: ROLES.ALUMNO,
     label: 'Alumno',
-    desc: 'Registro mi asistencia escaneando el QR de mi curso',
+    desc: 'Escaneo el QR de mi curso para registrar mi asistencia',
     icon: 'school-outline',
+  },
+  {
+    key: ROLES.PROFESOR,
+    label: 'Docente',
+    desc: 'Cargo las notas y los informes de mis materias',
+    icon: 'account-tie-outline',
+  },
+  {
+    key: ROLES.PRECEPTOR,
+    label: 'Preceptor',
+    desc: 'Sigo la asistencia del curso que tengo a cargo',
+    icon: 'clipboard-account-outline',
   },
   {
     key: ROLES.PADRE,
@@ -62,6 +83,15 @@ export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmar, setConfirmar] = useState('');
+  // Datos por rol: el alumno elige año + división (su curso queda "4°2"); el
+  // docente declara años → divisiones → materias por curso; el preceptor
+  // declara sus cursos a cargo.
+  const [anioAlumno, setAnioAlumno] = useState('');
+  const [divAlumno, setDivAlumno] = useState('');
+  const [aniosDoc, setAniosDoc] = useState([]); // ['4', '5']
+  const [divSel, setDivSel] = useState({}); // { '4': ['1', '2'] }
+  const [materiasPorCurso, setMateriasPorCurso] = useState({}); // { '4°2': ['PROG'] }
+  const [cursosPrecep, setCursosPrecep] = useState([]); // ['4°2']
   const [errores, setErrores] = useState({});
   const [enviando, setEnviando] = useState(false);
 
@@ -136,9 +166,54 @@ export default function RegisterScreen({ navigation }) {
     [colors]
   );
 
+  // Curso final del alumno: año + división → "4°2" (id real de `cursos/`).
+  const cursoAlumno = anioAlumno && divAlumno ? `${anioAlumno}°${divAlumno}` : '';
+
+  // Cursos elegidos por el docente: combinación año + división ("4" + "2" →
+  // "4°2"), en orden de la escuela (1°→7°, división ascendente). Los ids son
+  // los reales de la colección `cursos` (la regla de alumnos exige que
+  // existan y las declaraciones se confirman contra `materias/{mat_<curso>_<codigo>}`).
+  const cursosDoc = ANIOS_ESCOLARES.filter((anio) => aniosDoc.includes(anio)).flatMap((anio) =>
+    divisionesDe(anio)
+      .filter((div) => (divSel[anio] || []).includes(div))
+      .map((div) => ({ id: `${anio}°${div}`, anio, div }))
+  );
+
   const seleccionarRol = (clave) => {
     setRol(clave);
     setErrores((prev) => ({ ...prev, rol: '' }));
+  };
+
+  const toggleAnio = (anio) => {
+    setAniosDoc((prev) => (prev.includes(anio) ? prev.filter((x) => x !== anio) : [...prev, anio]));
+    limpiarError('aniosDoc');
+  };
+
+  const toggleDiv = (anio, div) => {
+    setDivSel((prev) => {
+      const actual = prev[anio] || [];
+      const siguiente = actual.includes(div) ? actual.filter((x) => x !== div) : [...actual, div];
+      return { ...prev, [anio]: siguiente };
+    });
+    limpiarError(`div_${anio}`);
+  };
+
+  const toggleMateria = (cursoId, codigo) => {
+    setMateriasPorCurso((prev) => {
+      const actual = prev[cursoId] || [];
+      const siguiente = actual.includes(codigo)
+        ? actual.filter((x) => x !== codigo)
+        : [...actual, codigo];
+      return { ...prev, [cursoId]: siguiente };
+    });
+    limpiarError(`materias_${cursoId}`);
+  };
+
+  const toggleCursoPrecep = (cursoId) => {
+    setCursosPrecep((prev) =>
+      prev.includes(cursoId) ? prev.filter((x) => x !== cursoId) : [...prev, cursoId]
+    );
+    limpiarError('cursosPrecep');
   };
 
   const limpiarError = (campo) => setErrores((prev) => ({ ...prev, [campo]: '' }));
@@ -156,6 +231,25 @@ export default function RegisterScreen({ navigation }) {
     else if (password.length < 6) err.password = 'La contraseña debe tener al menos 6 caracteres';
     if (!confirmar) err.confirmar = 'Confirmá la contraseña';
     else if (confirmar !== password) err.confirmar = 'Las contraseñas no coinciden';
+
+    if (rol === ROLES.ALUMNO) {
+      if (!anioAlumno) err.anioAlumno = 'Seleccioná tu año';
+      else if (!divAlumno) err.divAlumno = 'Seleccioná tu división';
+    }
+    if (rol === ROLES.PROFESOR) {
+      if (!aniosDoc.length) err.aniosDoc = 'Seleccioná al menos un año que dictés';
+      else
+        aniosDoc.forEach((anio) => {
+          if (!(divSel[anio] || []).length) err[`div_${anio}`] = `Elegí la división del ${anio}°`;
+        });
+      cursosDoc.forEach((curso) => {
+        if (!(materiasPorCurso[curso.id] || []).length)
+          err[`materias_${curso.id}`] = 'Elegí al menos una materia en este curso';
+      });
+    }
+    if (rol === ROLES.PRECEPTOR && !cursosPrecep.length) {
+      err.cursosPrecep = 'Seleccioná al menos un curso a cargo';
+    }
 
     return err;
   };
@@ -178,6 +272,22 @@ export default function RegisterScreen({ navigation }) {
       telefono: telefono.trim(),
       rol,
       dniHijo: rol === ROLES.PADRE ? dniHijo.trim() : '',
+      // Alumno: su curso (existe en `cursos/`, lo exige la regla).
+      ...(rol === ROLES.ALUMNO ? { cursoId: cursoAlumno } : {}),
+      // Docente: declaracion de cursos + materias por curso (la confirma la
+      // institución en materias.docenteId — no da permiso por sí sola).
+      ...(rol === ROLES.PROFESOR
+        ? {
+            cursosDeclarados: cursosDoc.map((curso) => curso.id),
+            materiasDeclaradas: cursosDoc.map((curso) => ({
+              cursoId: curso.id,
+              materias: materiasPorCurso[curso.id] || [],
+            })),
+          }
+        : {}),
+      // Preceptor: declaracion de cursos a cargo (la confirma la institución
+      // en cursos.preceptorIds).
+      ...(rol === ROLES.PRECEPTOR ? { cursosDeclarados: cursosPrecep } : {}),
     };
 
     setEnviando(true);
@@ -239,6 +349,91 @@ export default function RegisterScreen({ navigation }) {
                 );
               })}
               {errores.rol ? <Text style={s.rolError}>{errores.rol}</Text> : null}
+
+              {rol === ROLES.ALUMNO ? (
+                <View style={s.sectionBlock}>
+                  <Text style={s.section}>DATOS ACADÉMICOS</Text>
+                  <SelectChips
+                    label="MI AÑO"
+                    options={ANIOS_OPCIONES}
+                    value={anioAlumno}
+                    onSelect={(id) => {
+                      setAnioAlumno(id);
+                      setDivAlumno('');
+                      limpiarError('anioAlumno');
+                      limpiarError('divAlumno');
+                    }}
+                    error={errores.anioAlumno}
+                  />
+                  <SelectChips
+                    label="MI DIVISIÓN"
+                    options={anioAlumno ? divisionesOpciones(anioAlumno) : []}
+                    value={divAlumno}
+                    onSelect={(id) => {
+                      setDivAlumno(id);
+                      limpiarError('divAlumno');
+                    }}
+                    error={errores.divAlumno}
+                    hint={
+                      anioAlumno
+                        ? 'Se usa para escanear el QR de tu curso'
+                        : 'Elegí primero tu año'
+                    }
+                    emptyText="Elegí primero tu año"
+                  />
+                </View>
+              ) : null}
+
+              {rol === ROLES.PROFESOR ? (
+                <View style={s.sectionBlock}>
+                  <Text style={s.section}>DATOS DOCENTE</Text>
+                  <MultiChips
+                    label="AÑOS QUE DICTO"
+                    options={ANIOS_OPCIONES}
+                    values={aniosDoc}
+                    onToggle={toggleAnio}
+                    error={errores.aniosDoc}
+                  />
+                  {aniosDoc.map((anio) => (
+                    <MultiChips
+                      key={`div-${anio}`}
+                      label={`DIVISIONES DEL ${anio}°`}
+                      options={divisionesOpciones(anio)}
+                      values={divSel[anio] || []}
+                      onToggle={(div) => toggleDiv(anio, div)}
+                      error={errores[`div_${anio}`]}
+                    />
+                  ))}
+                  {cursosDoc.map((curso) => (
+                    <MultiChips
+                      key={`mat-${curso.id}`}
+                      label={`MATERIAS EN ${etiquetaCursoId(curso.id)}`}
+                      options={MATERIAS_ESCOLARES}
+                      values={materiasPorCurso[curso.id] || []}
+                      onToggle={(codigo) => toggleMateria(curso.id, codigo)}
+                      error={errores[`materias_${curso.id}`]}
+                    />
+                  ))}
+                  <Text style={[s.roleDesc, { marginTop: 4 }]}>
+                    Las materias quedan pendientes de aprobación de la institución: hasta que
+                    un administrador las asigne no vas a poder cargar notas.
+                  </Text>
+                </View>
+              ) : null}
+
+              {rol === ROLES.PRECEPTOR ? (
+                <View style={s.sectionBlock}>
+                  <Text style={s.section}>CURSOS A CARGO</Text>
+                  <MultiChips
+                    label="CURSOS QUE SIGO"
+                    options={CURSOS_OPCIONES}
+                    values={cursosPrecep}
+                    onToggle={toggleCursoPrecep}
+                    error={errores.cursosPrecep}
+                    hint="La institución confirma tu asignación"
+                  />
+                </View>
+              ) : null}
 
               <View style={s.sectionBlock}>
                 <Text style={s.section}>DATOS PERSONALES</Text>

@@ -159,9 +159,8 @@ export function materiasDelAnio(anio) {
   const base = String(anio ?? '').replace(/[^\d]/g, '');
   if (!base) return [];
   const curso = `${base}°`;
-  const divisiones = Number(base) >= 4 ? ['1', '2', '3'] : ['1'];
   const set = new Set();
-  divisiones.forEach((d) => materiasDe(curso, d).forEach((m) => set.add(m)));
+  divisionesDe(base).forEach((d) => materiasDe(curso, d).forEach((m) => set.add(m)));
   return [...set];
 }
 
@@ -174,7 +173,7 @@ export const DIVISIONES_POR_ANIO = {
   '1°': ['1', '2', '3', '4', '5'],
   '2°': ['1', '2', '3', '4', '5'],
   '3°': ['1', '2', '3', '4', '5'],
-  '4°': ['1', '2', '3'],
+  '4°': ['1', '2', '3', '4'],
   '5°': ['1', '2', '3'],
   '6°': ['1', '2'],
   '7°': ['1', '2'],

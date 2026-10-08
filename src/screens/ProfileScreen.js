@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { ROLE_INFO } from '../utils/roles';
+import { etiquetaCursoId, MATERIAS_ESCOLARES } from '../utils/colegio';
 import { logout, getActiveUser } from '../services/authService';
 import { notify } from '../utils/notify';
 import typography from '../theme/typography';
@@ -27,6 +28,10 @@ const infoRows = (profile) => {
   if (profile.cursos) rows.push({ label: 'Cursos que dicta', value: profile.cursos });
   else if (profile.anio) rows.push({ label: 'Año que dicta', value: profile.anio });
   if (profile.materias) rows.push({ label: 'Materias que dicta', value: profile.materias });
+  if (profile.cursosDeclarados)
+    rows.push({ label: 'Cursos solicitados', value: `${profile.cursosDeclarados} (pendiente)` });
+  if (profile.materiasDeclaradas)
+    rows.push({ label: 'Materias solicitadas', value: `${profile.materiasDeclaradas} (pendiente)` });
   if (profile.titulo) rows.push({ label: 'Título', value: profile.titulo });
   return rows;
 };
@@ -56,6 +61,22 @@ export default function ProfileScreen({ navigation }) {
       Array.isArray(active.materias) && active.materias.length
         ? active.materias.join(', ')
         : active.materia || null,
+    // Declaraciones del registro (todavia no confirmadas por la institucion)
+    cursosDeclarados:
+      Array.isArray(active.cursosDeclarados) && active.cursosDeclarados.length
+        ? active.cursosDeclarados.map((id) => etiquetaCursoId(id)).join(' · ')
+        : null,
+    materiasDeclaradas:
+      Array.isArray(active.materiasDeclaradas) && active.materiasDeclaradas.length
+        ? active.materiasDeclaradas
+            .map(
+              (bloque) =>
+                `${etiquetaCursoId(bloque.cursoId)}: ${(bloque.materias || [])
+                  .map((codigo) => MATERIAS_ESCOLARES.find((m) => m.id === codigo)?.label ?? codigo)
+                  .join(', ')}`
+            )
+            .join(' · ')
+        : null,
     titulo: active.titulo || null,
   };
 

@@ -36,6 +36,10 @@ function espejoLocal(uid, fbUser, perfil) {
     titulo: perfil?.titulo ?? null,
     materias,
     cursos: Array.isArray(perfil?.cursos) && perfil.cursos.length ? perfil.cursos : [],
+    // Declaracion al registrarse (docente/preceptor): queda visible como
+    // "pendiente" hasta que la institucion la confirme.
+    cursosDeclarados: Array.isArray(perfil?.cursosDeclarados) ? perfil.cursosDeclarados : [],
+    materiasDeclaradas: Array.isArray(perfil?.materiasDeclaradas) ? perfil.materiasDeclaradas : [],
   };
 }
 
@@ -144,11 +148,13 @@ export function AuthProvider({ children }) {
   const entrar = useCallback((email, password) => users.login(email, password), []);
 
   const registrar = useCallback(
-    async ({ email, password, nombre, apellido, dni, telefono, rol, dniHijo }) => {
+    async ({ email, password, nombre, apellido, dni, telefono, rol, dniHijo, cursoId, cursosDeclarados, materiasDeclaradas }) => {
       // Alta publica separada por tipo (Opcion B):
-      //   alumno -> Authentication + alumnos/{uid}
+      //   alumno -> Authentication + alumnos/{uid} (con el curso elegido)
       //   padre  -> Authentication + padres/{uid}
-      // Las cuentas staff siguen usando usuarios/{uid} (via administrativa).
+      //   docente/preceptor -> Authentication + usuarios/{uid}, con la
+      //   declaracion de cursos/materias que la administracion confirma despues
+      //   (no da permiso por si sola).
       // Ninguna rama escribe en `usuarios/` para alumno/padre: no hay documentos
       // duplicados, y el rol se deduce de la coleccion donde vive el perfil.
       const rolSolicitado = normalizarRol(rol) || ROLES.ALUMNO;
@@ -157,9 +163,19 @@ export function AuthProvider({ children }) {
       if (rolSolicitado === ROLES.PADRE) {
         uid = await padres.crearPadrePublico({ email, password, nombre, apellido, dni, telefono, dniHijo });
       } else if (rolSolicitado === ROLES.ALUMNO) {
-        uid = await students.crearAlumnoPublico({ email, password, nombre, apellido, dni, telefono });
+        uid = await students.crearAlumnoPublico({ email, password, nombre, apellido, dni, telefono, cursoId });
       } else {
-        uid = await users.crearUsuario({ email, password, nombre, apellido, dni, telefono, rol: rolSolicitado });
+        uid = await users.crearUsuario({
+          email,
+          password,
+          nombre,
+          apellido,
+          dni,
+          telefono,
+          rol: rolSolicitado,
+          cursosDeclarados,
+          materiasDeclaradas,
+        });
       }
 
       await cargarPerfil(uid, auth.currentUser);
