@@ -1,6 +1,8 @@
 import { View, Text, FlatList, TouchableOpacity, TextInput, Share, Modal, ScrollView } from 'react-native';
 import { notify } from '../utils/notify';
-import { useState, useMemo } from 'react';
+import { nombreParaMostrar } from '../utils/nombres';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import typography from '../theme/typography';
 import Card from '../components/Card';
@@ -8,6 +10,13 @@ import Header from '../components/Header';
 import Calendar, { todayKey } from '../components/Calendar';
 import { getActiveUser } from '../services/authService';
 import { getToday } from '../services/attendanceService';
+import { cargarAsistenciaHoy } from '../services/asistenciaAlumno';
+import {
+  alumnosDeMisCursos,
+  asistenciasDeFecha,
+  estadoDeAsistencia,
+  horaDeAsistencia,
+} from '../services/misAlumnos';
 import {
   TIPOS_AVISO,
   tiposPara,
@@ -171,11 +180,9 @@ export default function EventsScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [letterFilter, setLetterFilter] = useState('Todas');
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // arranca en el día con registros más recientes (si no, hoy)
-    const dates = attendanceHistory.map((i) => i.date).sort();
-    return dates[dates.length - 1] || new Date().toISOString().split('T')[0];
-  });
+  // Arranca en HOY: es el día que le interesan las asistencias reales del
+  // staff (y la lista de ejemplo también tiene registros del día 0).
+  const [selectedDate, setSelectedDate] = useState(() => todayKey());
 
   const statusConfig = {
     presente: {
@@ -195,6 +202,13 @@ export default function EventsScreen({ navigation }) {
       color: colors.error,
       icon: '✗',
       bgOpacity: '20'
+    },
+    // Alumno del curso a cargo que todavía no escaneó el QR de hoy.
+    'sin-registro': {
+      label: 'Sin registro',
+      color: colors.textSecondary,
+      icon: '⏳',
+      bgOpacity: '20'
     }
   };
 
@@ -207,7 +221,54 @@ export default function EventsScreen({ navigation }) {
     activeUser?.curso && activeUser?.division ? `${activeUser.curso}${activeUser.division}` : null;
 
   // Registro REAL de hoy: el que se creó al escanear el QR de la entrada.
-  const miRegistro = getToday();
+  // Se relee al enfocar la pestaña (el escaneo ocurre en el scanner, otra
+  // pestaña): primero lo local, que es inmediato, y después lo de la nube, que
+  // es lo que sobrevive a un reinicio de la app.
+  const [miRegistro, setMiRegistro] = useState(() => getToday());
+
+  // Alumnos REALES de los cursos a cargo del preceptor/docente (traídos de
+  // Firestore, ordenados por apellido). Vacío = sin cursos asignados todavía
+  // (o rol sin cursos) y la pantalla conserva la lista de ejemplo.
+  const [planilla, setPlanilla] = useState({ cursosIds: [], alumnos: [] });
+  // Asistencias reales de la fecha seleccionada: { alumnoId: registro }
+  const [registrosFecha, setRegistrosFecha] = useState({});
+
+  useFocusEffect(
+    useCallback(() => {
+      setMiRegistro(getToday());
+      let vivo = true;
+      cargarAsistenciaHoy(activeUser)
+        .then((registro) => {
+          // null = todavía no está en la nube: conservamos lo de local
+          if (vivo && registro) setMiRegistro(registro);
+        })
+        .catch(() => {});
+      if (esStaff) {
+        alumnosDeMisCursos(activeUser)
+          .then((plan) => {
+            if (vivo) setPlanilla(plan);
+          })
+          .catch(() => {});
+      }
+      return () => {
+        vivo = false;
+      };
+    }, [activeUser, esStaff])
+  );
+
+  // Al cambiar de día se releen las asistencias reales de ese día.
+  useEffect(() => {
+    if (!esStaff || !planilla.cursosIds.length) return undefined;
+    let vivo = true;
+    asistenciasDeFecha(planilla.cursosIds, selectedDate)
+      .then((mapa) => {
+        if (vivo) setRegistrosFecha(mapa);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [esStaff, planilla, selectedDate]);
   const miItem = (() => {
     if (!miRegistro) return null;
     // Si hay curso en pantalla, solo mostramos registros de ese curso
@@ -226,10 +287,30 @@ export default function EventsScreen({ navigation }) {
     };
   })();
 
-  const courseRecords = [
-    ...(miItem ? [miItem] : []),
-    ...attendanceHistory.filter((item) => !myCourse || item.course === myCourse),
-  ];
+  // Registros del día para el staff: cada alumno REAL de sus cursos con la
+  // asistencia de la fecha seleccionada ("sin-registro" si todavía no escaneó).
+  const filasReales = planilla.alumnos.map((alumno) => {
+    const registro = registrosFecha[alumno.id];
+    return {
+      id: `alumno-${alumno.id}`,
+      studentId: alumno.id,
+      student: `${alumno.nombre} ${alumno.apellido}`.trim(),
+      nombre: alumno.nombre,
+      apellido: alumno.apellido,
+      course: alumno.cursoId,
+      date: selectedDate,
+      time: horaDeAsistencia(registro),
+      status: estadoDeAsistencia(registro),
+      observations: registro?.observaciones || '-',
+    };
+  });
+
+  const courseRecords = filasReales.length
+    ? filasReales
+    : [
+        ...(miItem ? [miItem] : []),
+        ...attendanceHistory.filter((item) => !myCourse || item.course === myCourse),
+      ];
 
   // La lista se toma por APELLIDO: el filtro de letras, el agrupado y el orden
   // usan la inicial del apellido ("Ana Martínez" → M), no la del nombre.
@@ -313,7 +394,8 @@ export default function EventsScreen({ navigation }) {
     const presentes = dayRecords.filter(item => item.status === 'presente').length;
     const tarde = dayRecords.filter(item => item.status === 'tarde').length;
     const ausentes = dayRecords.filter(item => item.status === 'ausente').length;
-    return { presentes, tarde, ausentes, total: dayRecords.length };
+    const sinRegistro = dayRecords.filter(item => item.status === 'sin-registro').length;
+    return { presentes, tarde, ausentes, sinRegistro, total: dayRecords.length };
   };
 
   const stats = getStatsForDate(selectedDate);
@@ -874,6 +956,17 @@ export default function EventsScreen({ navigation }) {
             <Text style={[s.statNumber, { color: colors.error }]}>{stats.ausentes}</Text>
             <Text style={s.statLabel}>Ausentes</Text>
           </View>
+          {stats.sinRegistro > 0 && (
+            <>
+              <View style={s.statDivider} />
+              <View style={s.statItem}>
+                <Text style={[s.statNumber, { color: colors.textSecondary }]}>
+                  {stats.sinRegistro}
+                </Text>
+                <Text style={s.statLabel}>Sin registro</Text>
+              </View>
+            </>
+          )}
           <View style={s.statDivider} />
           <View style={s.statItem}>
             <Text style={[s.statNumber, { color: colors.primary }]}>{stats.total}</Text>
@@ -989,14 +1082,14 @@ export default function EventsScreen({ navigation }) {
           return (
             <TouchableOpacity
               onPress={() => notify(
-                item.student,
+                nombreParaMostrar(item),
                 `${item.course} · ${status.label}\n🕐 ${item.time} hs\n📝 ${item.observations}`
               )}
             >
               <Card style={[s.eventCard, getStatusStyle(item.status)]}>
                 <View style={s.eventRow}>
                   <View style={s.eventInfo}>
-                    <Text style={s.studentName}>{item.student}</Text>
+                    <Text style={s.studentName}>{nombreParaMostrar(item)}</Text>
                     <Text style={s.studentCourse}>{item.course}</Text>
                     {item.observations !== '-' && (
                       <Text style={s.observations}>📝 {item.observations}</Text>
@@ -1025,11 +1118,11 @@ export default function EventsScreen({ navigation }) {
         onPress={async () => {
           const lines = [...filteredHistory]
             .sort(porApellido)
-            .map((r) => `• ${r.student} (${r.course}): ${r.status} ${r.time}`)
+            .map((r) => `• ${nombreParaMostrar(r)} (${r.course}): ${getStatusConfig(r.status).label} ${r.time}`)
             .join('\n');
           try {
             await Share.share({
-              message: `Reporte de asistencia del ${formatDate(selectedDate)}\nPresentes: ${stats.presentes} · Tarde: ${stats.tarde} · Ausentes: ${stats.ausentes} · Total: ${stats.total}\n\n${lines || 'Sin registros'}`,
+              message: `Reporte de asistencia del ${formatDate(selectedDate)}\nPresentes: ${stats.presentes} · Tarde: ${stats.tarde} · Ausentes: ${stats.ausentes}${stats.sinRegistro ? ` · Sin registro: ${stats.sinRegistro}` : ''} · Total: ${stats.total}\n\n${lines || 'Sin registros'}`,
             });
           } catch (error) {
             notify('Error', 'No se pudo compartir el reporte');

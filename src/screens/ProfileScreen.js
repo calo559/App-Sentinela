@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { ROLE_INFO } from '../utils/roles';
-import { etiquetaCursoId, MATERIAS_ESCOLARES } from '../utils/colegio';
+import { etiquetaCursoId, nombreDeMateria } from '../utils/colegio';
 import { logout, getActiveUser } from '../services/authService';
 import { notify } from '../utils/notify';
 import typography from '../theme/typography';
@@ -72,7 +72,7 @@ export default function ProfileScreen({ navigation }) {
             .map(
               (bloque) =>
                 `${etiquetaCursoId(bloque.cursoId)}: ${(bloque.materias || [])
-                  .map((codigo) => MATERIAS_ESCOLARES.find((m) => m.id === codigo)?.label ?? codigo)
+                  .map((codigo) => nombreDeMateria(codigo))
                   .join(', ')}`
             )
             .join(' · ')
@@ -179,7 +179,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={s.avatarText}>{(profile.name || '?').trim().charAt(0).toUpperCase()}</Text>
           </View>
           <Text style={s.userRole}>{profile.role}</Text>
-          <Text style={s.userInstitution}>Escuela Técnica N°3 - "S.A. de Padrón"</Text>
+          <Text style={s.userInstitution}>Escuela Técnica N°3 - "S.A. de Padua"</Text>
         </View>
 
         <Card style={s.infoCard}>
@@ -216,7 +216,7 @@ export default function ProfileScreen({ navigation }) {
 
         <View style={s.versionContainer}>
           <Text style={s.versionText}>Sistema de Asistencia Escolar v1.0</Text>
-          <Text style={s.versionSubtext}>Escuela Técnica N°3 - "S.A. de Padrón"</Text>
+          <Text style={s.versionSubtext}>Escuela Técnica N°3 - "S.A. de Padua"</Text>
         </View>
       </ScrollView>
     </View>

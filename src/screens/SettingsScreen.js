@@ -10,7 +10,7 @@ import { notify } from '../utils/notify';
 import { SCREENS } from '../utils/constants';
 import appInfo from '../../app.json';
 
-const ESCUELA = 'Escuela Técnica Nº 3 "S.A. de Padrón"';
+const ESCUELA = 'Escuela Técnica Nº 3 "S.A. de Padua"';
 
 const inicialesDe = (nombre, apellido) => {
   const inicial = `${(nombre ?? '').trim().charAt(0)}${(apellido ?? '').trim().charAt(0)}`.toUpperCase();
@@ -264,7 +264,7 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={s.about}>
           <Text style={s.aboutSchool}>Escuela de Educación Secundaria</Text>
-          <Text style={s.aboutSchoolName}>Técnica Nº 3 "S.A. de Padrón"</Text>
+          <Text style={s.aboutSchoolName}>Técnica Nº 3 "S.A. de Padua"</Text>
           <View style={s.aboutDivider} />
           <Text style={s.aboutText}>© {new Date().getFullYear()} · Sistema de Asistencia Escolar</Text>
           <Text style={s.aboutVersion}>

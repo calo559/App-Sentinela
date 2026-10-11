@@ -26,6 +26,10 @@ function espejoLocal(uid, fbUser, perfil) {
   return {
     uid,
     role,
+    // ID de la ficha del alumno tal como lo resuelven las reglas de Firestore
+    // (miAlumnoId): el uid en el registro público, usuarios.alumnoId en la
+    // cuenta legacy. Lo usa el escaneo del QR para escribir en `asistencias`.
+    alumnoId: perfil?.alumnoId ?? null,
     nombre: perfil?.nombre || '',
     apellido: perfil?.apellido || '',
     email: fbUser?.email ?? perfil?.email ?? '',

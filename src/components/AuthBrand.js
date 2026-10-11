@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 
 export default function AuthBrand({
   title = 'ESCUELA TÉCNICA Nº 3',
-  subtitle = '"S.A. de Padrón"',
+  subtitle = '"S.A. de Padua"',
   tagline = 'Sistema de Asistencia Escolar',
   compact = false,
 }) {

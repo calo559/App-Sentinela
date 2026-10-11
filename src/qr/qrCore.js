@@ -10,7 +10,7 @@
 // mismo (fecha, slot) produce siempre la misma firma, y sin el secreto no se
 // puede fabricar un token que pase la validación.
 
-export const SIA_QR_SECRET = 'SIA-ET3-PADRON-2026-QR';
+export const SIA_QR_SECRET = 'SIA-ET3-PADUA-2026-QR';
 export const PREFIJO_TOKEN = 'SIA1';
 export const LONGITUD_FIRMA = 8;
 export const TOLERANCIA_FECHA_DIAS = 0;

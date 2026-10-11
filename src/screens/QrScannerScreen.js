@@ -7,6 +7,7 @@ import { useTheme } from "../context/ThemeContext";
 import { SCREENS } from "../utils/constants";
 import { getActiveUser } from "../services/authService";
 import { markPresentToday } from "../services/attendanceService";
+import { guardarEscaneoEnLaNube } from "../services/asistenciaAlumno";
 import { validarQr } from "../qr/qrDinamico";
 
 export default function QrScannerScreen({ navigation }) {
@@ -17,6 +18,7 @@ export default function QrScannerScreen({ navigation }) {
   const [registro, setRegistro] = useState(null); // asistencia del alumno registrada
   const [yaMarcada, setYaMarcada] = useState(false);
   const [rechazo, setRechazo] = useState(null); // motivo de rechazo del QR dinámico
+  const [nube, setNube] = useState(null); // ¿quedó guardado en Firestore?
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -51,13 +53,25 @@ export default function QrScannerScreen({ navigation }) {
         setRegistro(reg);
         setYaMarcada(!!reg?.ya);
         setRechazo(null);
+        setNube(null);
+        // Y en paralelo lo replica a `asistencias` en Firestore, que es el
+        // registro oficial (lo que sobrevive reinicios y ven preceptor/docente).
+        // Si no hay sesión QR abierta o no hay red, el alumno sigue marcado en
+        // local y el motivo queda visible abajo.
+        guardarEscaneoEnLaNube({ user, periodo: res.periodo })
+          .then(setNube)
+          .catch(() =>
+            setNube({ ok: false, motivo: "No se pudo guardar en el sistema" })
+          );
       } else {
         setRegistro(null);
         setRechazo(res.motivo);
+        setNube(null);
       }
     } else {
       setRegistro(null);
       setRechazo("Solo los alumnos registran asistencia escaneando el QR");
+      setNube(null);
     }
   };
 
@@ -65,6 +79,7 @@ export default function QrScannerScreen({ navigation }) {
     setScanned(false);
     setScannedData(null);
     setRechazo(null);
+    setNube(null);
   };
 
   // La pestaña QR no tiene historial atrás: si no se puede "goBack", volvemos a Home
@@ -131,6 +146,7 @@ export default function QrScannerScreen({ navigation }) {
       color: colors.secondary, fontSize: 14, fontWeight: "500",
       textAlign: "center", marginBottom: 16,
     },
+    nubeLine: { fontSize: 12, textAlign: "center", lineHeight: 17 },
     button: {
       backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24,
       borderRadius: 12, alignSelf: "center",
@@ -210,6 +226,18 @@ export default function QrScannerScreen({ navigation }) {
                     {registro.bloque ? ` · ${registro.bloque}` : ""}
                     {registro.curso ? `\n${registro.curso} · ${registro.alumno}` : ""}
                   </Text>
+                  {nube && (
+                    <Text
+                      style={[
+                        s.nubeLine,
+                        { color: nube.ok ? colors.success : colors.warning },
+                      ]}
+                    >
+                      {nube.ok
+                        ? "☁︎ Guardado en el sistema"
+                        : `⚠︎ ${nube.motivo}`}
+                    </Text>
+                  )}
                 </View>
               ) : rechazo ? (
                 <View>

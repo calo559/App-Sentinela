@@ -1,5 +1,6 @@
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { SCREENS } from '../utils/constants';
@@ -7,6 +8,7 @@ import { notify } from '../utils/notify';
 import { ROLE_INFO } from '../utils/roles';
 import { getActiveUser } from '../services/authService';
 import { getToday } from '../services/attendanceService';
+import { cargarAsistenciaHoy } from '../services/asistenciaAlumno';
 import { proximaClase, periodosDeCurso, esDiaClase, HORARIO_DIAS_CURSOS } from '../qr/horarios';
 import { detalleMateria } from '../utils/malla';
 import typography from '../theme/typography';
@@ -67,8 +69,31 @@ export default function HomeScreen({ navigation }) {
   const activeUser = getActiveUser();
   const roleInfo = ROLE_INFO[activeUser?.role];
   const esAlumno = activeUser?.role === 'alumno';
-  // Registro del día: el alumno se marca presente al escanear el QR de la clase
-  const hoy = esAlumno ? getToday() : null;
+  // Registro del día: el alumno se marca presente al escanear el QR de la clase.
+  // El scanner corre en OTRA pestaña y las pantallas quedan montadas, así que al
+  // volver había que releerlo: useFocusEffect lo refresca cada vez que el alumno
+  // entra a Inicio (si no, seguía mostrando "sin marcar" del render anterior).
+  // Orden: 1) local, que es inmediato; 2) la nube, que es la que sobrevive a un
+  // reinicio de la app (React Native no tiene localStorage).
+  const [hoy, setHoy] = useState(() => (esAlumno ? getToday() : null));
+  useFocusEffect(
+    useCallback(() => {
+      if (!esAlumno) {
+        setHoy(null);
+        return;
+      }
+      setHoy(getToday());
+      let vivo = true;
+      cargarAsistenciaHoy(activeUser)
+        .then((registro) => {
+          if (vivo && registro) setHoy(registro);
+        })
+        .catch(() => {});
+      return () => {
+        vivo = false;
+      };
+    }, [esAlumno, activeUser])
+  );
 
   const scrollRef = useRef(null);
   const avisosY = useRef(0);
@@ -527,7 +552,7 @@ export default function HomeScreen({ navigation }) {
                   ]}
                 >
                   {hoy
-                    ? `Hoy: ${hoy.status === 'tarde' ? '⏰ Llegada tarde' : 'Presente'} · ${hoy.hora}`
+                    ? `Hoy: ${hoy.status === 'tarde' ? '⏰ Llegada tarde' : 'Presente'} · ${hoy.hora}${hoy.bloque ? ` · ${hoy.bloque}` : ''}`
                     : 'Hoy: sin marcar · Escaneá el QR'}
                 </Text>
               </View>

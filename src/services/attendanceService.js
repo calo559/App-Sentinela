@@ -46,6 +46,18 @@ function minutos(hhmm) {
 }
 
 /**
+ * 'presente' o 'tarde' según el inicio del bloque y la tolerancia de 10 min.
+ * Es la MISMA regla que aplica la nube al guardar el escaneo: un escaneo más de
+ * 10 minutos después del inicio de la clase es llegada tarde.
+ */
+export function estadoSegunPeriodo(periodo, ahora = new Date()) {
+  const tarde =
+    !!periodo?.inicio &&
+    minutos(horaAhora(ahora)) > minutos(periodo.inicio) + TOLERANCIA_TARDE_MIN;
+  return tarde ? 'tarde' : 'presente';
+}
+
+/**
  * Registra al alumno como presente hoy (si ya estaba, devuelve el registro).
  *
  * `periodo` = bloque de clase en el que escaneó (con `inicio` y `materia`):
@@ -58,12 +70,10 @@ export function markPresentToday(user, periodo, ahora = new Date()) {
   const fecha = fechaHoy(ahora);
   if (mem[fecha]) return { ...mem[fecha], ya: true };
   const hora = horaAhora(ahora);
-  const tarde =
-    !!periodo?.inicio && minutos(hora) > minutos(periodo.inicio) + TOLERANCIA_TARDE_MIN;
   const registro = {
     fecha,
     hora,
-    status: tarde ? 'tarde' : 'presente',
+    status: estadoSegunPeriodo(periodo, ahora),
     bloque: periodo?.materia || periodo?.nombre || '',
     alumno: [user?.nombre, user?.apellido].filter(Boolean).join(' ') || user?.email || '',
     curso: user?.curso && user?.division ? `${user.curso}${user.division}` : '',
@@ -77,4 +87,18 @@ export function markPresentToday(user, periodo, ahora = new Date()) {
 export function getToday() {
   if (!mem) mem = read();
   return mem[fechaHoy()] || null;
+}
+
+/**
+ * Carga en local un registro que viene de la nube (misma forma que el local).
+ * React Native no tiene localStorage: lo que quedó en Firestore es la única
+ * copia que sobrevive a un reinicio de la app, así que al volver a Inicio se
+ * trae de vuelta a memoria para que las pantallas lo muestren igual.
+ */
+export function hidratarRegistro(registro) {
+  if (!registro?.fecha) return null;
+  if (!mem) mem = read();
+  mem[registro.fecha] = { ...registro };
+  write(mem);
+  return mem[registro.fecha];
 }

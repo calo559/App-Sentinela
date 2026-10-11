@@ -22,11 +22,10 @@ import { InputField, PasswordField, SelectChips, MultiChips } from '../component
 import {
   ANIOS_ESCOLARES,
   ANIOS_OPCIONES,
-  CURSOS_OPCIONES,
-  MATERIAS_ESCOLARES,
   divisionesDe,
   divisionesOpciones,
   etiquetaCursoId,
+  materiasOpcionesDe,
 } from '../utils/colegio';
 
 const ERRORES = {
@@ -91,7 +90,11 @@ export default function RegisterScreen({ navigation }) {
   const [aniosDoc, setAniosDoc] = useState([]); // ['4', '5']
   const [divSel, setDivSel] = useState({}); // { '4': ['1', '2'] }
   const [materiasPorCurso, setMateriasPorCurso] = useState({}); // { '4°2': ['PROG'] }
-  const [cursosPrecep, setCursosPrecep] = useState([]); // ['4°2']
+  // Preceptor: mismo patrón cascada que el docente → año(s) y después sus
+  // divisiones ("4" → ["1","2"]). NO se listan los 26 cursos juntos: se elige
+  // año y recién ahí aparecen las divisiones que EXISTEN en ese año.
+  const [aniosPrecep, setAniosPrecep] = useState([]); // ['3', '4']
+  const [divsPrecep, setDivsPrecep] = useState({}); // { '3': ['1'], '4': ['2'] }
   const [errores, setErrores] = useState({});
   const [enviando, setEnviando] = useState(false);
 
@@ -209,12 +212,31 @@ export default function RegisterScreen({ navigation }) {
     limpiarError(`materias_${cursoId}`);
   };
 
-  const toggleCursoPrecep = (cursoId) => {
-    setCursosPrecep((prev) =>
-      prev.includes(cursoId) ? prev.filter((x) => x !== cursoId) : [...prev, cursoId]
+  const toggleAnioPrecep = (anio) => {
+    setAniosPrecep((prev) =>
+      prev.includes(anio) ? prev.filter((x) => x !== anio) : [...prev, anio]
     );
-    limpiarError('cursosPrecep');
+    limpiarError('aniosPrecep');
   };
+
+  const toggleDivPrecep = (anio, div) => {
+    setDivsPrecep((prev) => {
+      const actual = prev[anio] || [];
+      const siguiente = actual.includes(div)
+        ? actual.filter((x) => x !== div)
+        : [...actual, div];
+      return { ...prev, [anio]: siguiente };
+    });
+    limpiarError(`divPrecep_${anio}`);
+  };
+
+  // Cursos que declara el preceptor: año elegido + sus divisiones elegidas.
+  const cursosPrecep = ANIOS_ESCOLARES.filter((anio) => aniosPrecep.includes(anio)).flatMap(
+    (anio) =>
+      divisionesDe(anio)
+        .filter((div) => (divsPrecep[anio] || []).includes(div))
+        .map((div) => `${anio}°${div}`)
+  );
 
   const limpiarError = (campo) => setErrores((prev) => ({ ...prev, [campo]: '' }));
 
@@ -247,8 +269,14 @@ export default function RegisterScreen({ navigation }) {
           err[`materias_${curso.id}`] = 'Elegí al menos una materia en este curso';
       });
     }
-    if (rol === ROLES.PRECEPTOR && !cursosPrecep.length) {
-      err.cursosPrecep = 'Seleccioná al menos un curso a cargo';
+    if (rol === ROLES.PRECEPTOR) {
+      if (!aniosPrecep.length) err.aniosPrecep = 'Seleccioná al menos un año';
+      else
+        aniosPrecep.forEach((anio) => {
+          if (!(divsPrecep[anio] || []).length) {
+            err[`divPrecep_${anio}`] = `Elegí la división del ${anio}°`;
+          }
+        });
     }
 
     return err;
@@ -408,15 +436,17 @@ export default function RegisterScreen({ navigation }) {
                     <MultiChips
                       key={`mat-${curso.id}`}
                       label={`MATERIAS EN ${etiquetaCursoId(curso.id)}`}
-                      options={MATERIAS_ESCOLARES}
+                      options={materiasOpcionesDe(curso.id)}
                       values={materiasPorCurso[curso.id] || []}
                       onToggle={(codigo) => toggleMateria(curso.id, codigo)}
                       error={errores[`materias_${curso.id}`]}
+                      emptyText="Cargando materias del curso…"
                     />
                   ))}
                   <Text style={[s.roleDesc, { marginTop: 4 }]}>
-                    Las materias quedan pendientes de aprobación de la institución: hasta que
-                    un administrador las asigne no vas a poder cargar notas.
+                    Son las materias reales de cada curso según la malla. Las que la
+                    institución todavía no tiene cargadas quedan pendientes: hasta que un
+                    administrador las asigne no vas a poder cargar notas.
                   </Text>
                 </View>
               ) : null}
@@ -425,13 +455,32 @@ export default function RegisterScreen({ navigation }) {
                 <View style={s.sectionBlock}>
                   <Text style={s.section}>CURSOS A CARGO</Text>
                   <MultiChips
-                    label="CURSOS QUE SIGO"
-                    options={CURSOS_OPCIONES}
-                    values={cursosPrecep}
-                    onToggle={toggleCursoPrecep}
-                    error={errores.cursosPrecep}
-                    hint="La institución confirma tu asignación"
+                    label="AÑOS QUE SIGO"
+                    options={ANIOS_OPCIONES}
+                    values={aniosPrecep}
+                    onToggle={toggleAnioPrecep}
+                    error={errores.aniosPrecep}
                   />
+                  {aniosPrecep.map((anio) => (
+                    <MultiChips
+                      key={`divp-${anio}`}
+                      label={`DIVISIONES DEL ${anio}°`}
+                      options={divisionesOpciones(anio)}
+                      values={divsPrecep[anio] || []}
+                      onToggle={(div) => toggleDivPrecep(anio, div)}
+                      error={errores[`divPrecep_${anio}`]}
+                      emptyText="Elegí primero tu año"
+                    />
+                  ))}
+                  {cursosPrecep.length ? (
+                    <Text style={[s.roleDesc, { marginTop: 4 }]}>
+                      Cursos elegidos: {cursosPrecep.map(etiquetaCursoId).join(' · ')}
+                    </Text>
+                  ) : null}
+                  <Text style={[s.roleDesc, { marginTop: 4 }]}>
+                    La institución confirma tu asignación: hasta que un administrador te asigne
+                    esos cursos no vas a ver a sus alumnos.
+                  </Text>
                 </View>
               ) : null}
 
